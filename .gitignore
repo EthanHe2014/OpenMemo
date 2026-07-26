@@ -1,0 +1,11 @@
+.env
+data/
+*.db
+*.pyc
+__pycache__/
+.DS_Store
+*.wav
+*.mp3
+data/audio/*.wav
+data/audio/*.mp3
+.venv/

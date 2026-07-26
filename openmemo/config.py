@@ -1,0 +1,35 @@
+"""Configuration management for OpenMemo"""
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables
+BASE_DIR = Path(__file__).parent.parent
+load_dotenv(BASE_DIR / ".env")
+
+# AI Configuration
+AI_BASE_URL = os.getenv("AI_BASE_URL", "https://yuanyuaicloud.cn/v1")
+AI_API_KEY = os.getenv("AI_API_KEY", "")
+AI_MODEL = os.getenv("AI_MODEL", "glm-5.1")
+
+# Feishu Configuration
+FEISHU_APP_ID = os.getenv("FEISHU_APP_ID", "")
+FEISHU_APP_SECRET = os.getenv("FEISHU_APP_SECRET", "")
+FEISHU_VERIFICATION_TOKEN = os.getenv("FEISHU_VERIFICATION_TOKEN", "")
+FEISHU_ENCRYPT_KEY = os.getenv("FEISHU_ENCRYPT_KEY", "")
+
+# Server Configuration
+SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
+SERVER_PORT = int(os.getenv("SERVER_PORT", "18890"))
+
+# TTS Configuration
+TTS_VOICE = os.getenv("TTS_VOICE", "zh-CN-XiaoxiaoNeural")
+
+# Data Configuration
+DATA_DIR = BASE_DIR / "data"
+DB_PATH = DATA_DIR / "openmemo.db"
+AUDIO_DIR = DATA_DIR / "audio"
+
+# Ensure directories exist
+DATA_DIR.mkdir(exist_ok=True)
+AUDIO_DIR.mkdir(exist_ok=True)
