@@ -127,6 +127,19 @@ class FeishuBot:
             dict with 'text', 'open_id', 'message_id', 'msg_type'
         """
         event = body.get("event", {})
+        sender = event.get("sender", {})
+        sender_type = sender.get("sender_type", "")
+        
+        # CRITICAL: Ignore messages from bots (including ourselves) to prevent loops
+        if sender_type == "APP" or sender_type == "BOT":
+            return {
+                "text": "",
+                "open_id": "",
+                "message_id": "",
+                "msg_type": "",
+                "is_bot": True
+            }
+        
         message = event.get("message", {})
         
         msg_type = message.get("message_type", "text")
@@ -145,7 +158,6 @@ class FeishuBot:
             # Voice message - Feishu provides STT result
             text = content.get("text", content.get("recognition", ""))
         
-        sender = event.get("sender", {})
         open_id = sender.get("sender_id", {}).get("open_id", "default_user")
         message_id = message.get("message_id", "")
         
@@ -153,7 +165,8 @@ class FeishuBot:
             "text": text,
             "open_id": open_id,
             "message_id": message_id,
-            "msg_type": msg_type
+            "msg_type": msg_type,
+            "is_bot": False
         }
 
 

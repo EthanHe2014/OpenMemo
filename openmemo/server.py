@@ -33,6 +33,11 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Deduplication: Track recently processed message IDs
+_processed_messages = set()
+_MAX_PROCESSED = 1000  # Keep last 1000 message IDs
+
+
 task_manager = TaskManager()
 conv_manager = ConversationManager()
 
@@ -52,19 +57,54 @@ async def feishu_webhook(request: Request):
     if body.get("type") == "url_verification":
         return feishu_bot.handle_challenge(body)
     
-    # Handle message event
+    # Handle message event - Feishu v2.0 schema puts event_type in header
     event = body.get("event", {})
     event_type = event.get("type", "")
+    header = body.get("header", {})
+    header_event_type = header.get("event_type", "")
     
-    if event_type == "im.message.receive_v1":
+    # Check both locations for event type
+    matched_type = event_type or header_event_type
+    
+    if matched_type == "im.message.receive_v1":
         # Extract message
         msg_data = feishu_bot.extract_message(body)
         text = msg_data["text"]
         open_id = msg_data["open_id"]
+        message_id = msg_data.get("message_id", "")
+        is_bot = msg_data.get("is_bot", False)
+        
+        # CRITICAL: Skip messages from bots (including ourselves) to prevent infinite loops
+        if is_bot:
+            print(f"[Feishu] BOT MESSAGE SKIPPED")
+            return {"status": "ok"}
+        
+        # DEDUPLICATION: Skip if we already processed this message
+        if message_id:
+            if message_id in _processed_messages:
+                print(f"[Feishu] DUPLICATE SKIPPED: {message_id}")
+                return {"status": "ok"}
+            # Add to processed set BEFORE processing to prevent race conditions
+            _processed_messages.add(message_id)
+            # Keep it from growing too big
+            if len(_processed_messages) > _MAX_PROCESSED:
+                _processed_messages.pop()
         
         if not text:
             return {"status": "ok"}
         
+        # IMPORTANT: Return 200 immediately so Feishu doesn't retry!
+        # Process the message in background
+        asyncio.create_task(_handle_feishu_message(open_id, text, message_id))
+        
+        return {"status": "ok"}
+    
+    return {"status": "ok"}
+
+
+async def _handle_feishu_message(open_id: str, text: str, message_id: str):
+    """Process a Feishu message in the background and send reply."""
+    try:
         print(f"[Feishu] Message from {open_id}: {text}")
         
         # Process the message through conversation pipeline
@@ -72,11 +112,13 @@ async def feishu_webhook(request: Request):
         reply = await process_message(open_id, text, speak_response=False)
         
         # Send reply back via Feishu
-        await feishu_bot.send_message(open_id, reply)
-        
-        return {"status": "ok"}
-    
-    return {"status": "ok"}
+        success = await feishu_bot.send_message(open_id, reply)
+        if success:
+            print(f"[Feishu] Reply sent to {open_id}: {reply[:50]}...")
+        else:
+            print(f"[Feishu] Failed to send reply to {open_id}")
+    except Exception as e:
+        print(f"[Feishu] Error handling message: {e}")
 
 
 # ─── REST API ───────────────────────────────────────────────
