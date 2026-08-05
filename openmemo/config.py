@@ -12,6 +12,10 @@ AI_BASE_URL = os.getenv("AI_BASE_URL", "https://yuanyuaicloud.cn/v1")
 AI_API_KEY = os.getenv("AI_API_KEY", "")
 AI_MODEL = os.getenv("AI_MODEL", "glm-5.2")
 
+# Tavily 搜索（用于 NEWS_JOB 实时新闻；密钥复用 OpenClaw 的配置）
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "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")
+TAVILY_BASE_URL = os.getenv("TAVILY_BASE_URL", "https://api.tavily.com")
+
 # Feishu Configuration
 FEISHU_APP_ID = os.getenv("FEISHU_APP_ID", "")
 FEISHU_APP_SECRET = os.getenv("FEISHU_APP_SECRET", "")

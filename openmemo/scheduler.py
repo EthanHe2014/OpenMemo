@@ -363,30 +363,57 @@ SCHEDULE_REMIND_PROMPT = """你是OpenMemo，现在需要提醒用户今天该�
 5. 直接输出提醒内容，不要JSON格式。"""
 
 
-async def _fetch_news(topic: str, max_retries: int = 2) -> str:
-    """尝试获取新闻（通过web_fetch或直接给提示词让AI模拟）。"""
+async def _fetch_news(topic: str, max_retries: int = 1) -> str:
+    """通过 Tavily 搜索实时新闻（topic: news），失败则降级由 AI 生成。"""
     try:
         import httpx
-        # 尝试用新闻API - 使用一个简单的公开源
-        search_urls = {
-            "科技": "https://rsshub.app/36kr/motif/107",
-            "体育": "https://rsshub.app/sports",
-            "天气": None,  # 天气用AI模拟就好
+        from .config import TAVILY_API_KEY, TAVILY_BASE_URL
+        if not TAVILY_API_KEY:
+            return "（无新闻源，AI生成内容）"
+        # 把用户topic映射成更自然的搜索关键词
+        query_map = {
+            "科技": "科技 新闻",
+            "体育": "体育 新闻",
+            "财经": "财经 新闻",
+            "国际": "国际 新闻",
+            "天气": "天气 预报",
         }
-        url = search_urls.get(topic)
-        if url:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(url)
-                if resp.status_code == 200:
-                    # 简单提取文本前2000字
-                    text = resp.text[:2000]
-                    # 清洗HTML标签
-                    text = re.sub(r'<[^>]+>', '', text)
-                    return text[:1500]
+        query = query_map.get(topic, f"{topic} 新闻")
+        payload = {
+            "api_key": TAVILY_API_KEY,
+            "query": query,
+            "topic": "news",
+            "search_depth": "basic",
+            "max_results": 6,
+            "include_answer": True,
+        }
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            resp = await client.post(f"{TAVILY_BASE_URL}/search", json=payload)
+            if resp.status_code == 200:
+                data = resp.json()
+                answer = data.get("answer", "") or ""
+                items = []
+                for r in data.get("results", [])[:5]:
+                    title = r.get("title", "")
+                    content = r.get("content", "")
+                    date = r.get("published_date", "")
+                    line = title
+                    if date:
+                        line += f"（{date[:10]}）"
+                    if content:
+                        line += f"：{content[:120]}"
+                    items.append(line)
+                combined = (answer + "\n\n" + "\n".join(items)) if items else answer
+                if combined.strip():
+                    return combined[:1500]
+                return "（Tavily无结果，AI生成内容）"
+            else:
+                print(f"[新闻] Tavily 返回 {resp.status_code}")
+                return "（无外部新闻源，AI生成内容）"
     except Exception as e:
-        print(f"[新闻] 获取外部新闻失败：{e}，使用AI生成")
+        print(f"[新闻] Tavily 获取失败：{e}，使用AI生成")
 
-    # 降级：直接返回空，由AI生成模拟内容
+    # 降级：由AI生成模拟内容
     return "（无外部新闻源，AI生成内容）"
 
 
