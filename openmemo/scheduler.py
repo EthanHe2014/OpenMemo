@@ -1,5 +1,6 @@
 """Scheduler module - APScheduler for task reminders"""
 import asyncio
+import re
 from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
@@ -135,8 +136,20 @@ async def reminder_callback(task_id: int):
     
     content = task["content"]
     priority = task["priority"]
+    task_type = task.get("task_type", "normal")
     
-    # 用AI生成自然、多样的提醒消息
+    # 智能任务类型：news / travel / schedule 走专门的执行逻辑
+    if task_type == "news":
+        await _execute_news_job(task)
+        return
+    if task_type == "travel":
+        await _execute_travel_reminder(task)
+        return
+    if task_type == "schedule":
+        await _execute_schedule_reminder(task)
+        return
+    
+    # 普通任务：用AI生成自然、多样的提醒消息
     try:
         messages = await _generate_reminder_message(content, priority)
         speech = messages["speech"]
@@ -291,6 +304,25 @@ def load_existing_tasks():
                     )
             except ValueError:
                 print(f"[调度器] 任务 {task['task_id']} 时间格式无效：{task['trigger_time']}")
+        # 每日循环的智能任务（news/schedule）：重启后重新武装明天的触发
+        elif task.get("task_type") in ("news", "schedule") and task.get("is_recurring"):
+            meta = task.get("meta_data") or {}
+            hour = meta.get("daily_hour") or _parse_remind_hour(meta.get("remind_time"))
+            # 若今天还没触发且时间未过，补一个今天的
+            # 直接武装明天的
+            try:
+                from datetime import timedelta
+                tomorrow = (now + timedelta(days=1)).replace(hour=hour, minute=0, second=0, microsecond=0)
+                scheduler.add_job(
+                    reminder_callback,
+                    trigger=DateTrigger(run_date=tomorrow),
+                    args=[task["task_id"]],
+                    id=f"task_{task['task_id']}",
+                    replace_existing=True
+                )
+                print(f"[调度器] 已重装备智能任务 {task['content']} 明天 {hour:02d}:00")
+            except Exception as e:
+                print(f"[调度器] 重装备智能任务出错：{e}")
 
 
 def start_scheduler():
@@ -304,3 +336,238 @@ def stop_scheduler():
     """停止调度器"""
     scheduler.shutdown()
     print("[调度器] 已停止")
+
+# ============ SMART TASK EXECUTION ============
+
+NEWS_PROMPT = """你是OpenMemo，现在你需要为用户提供最新的{topic}新闻摘要。
+今天是{date}，请搜索并汇总近期的{topic}类重要新闻。
+
+## 要求
+1. 挑选3-5条最重要的新闻，每条1-2句话
+2. 每条的格式：📰 标题
+3. 保持客观、简洁
+4. 如果{topic}是"天气"，只给天气情况，不要新闻
+5. 结尾可以加一句小评论或建议
+
+直接输出新闻内容，不要JSON格式。"""
+
+SCHEDULE_REMIND_PROMPT = """你是OpenMemo，现在需要提醒用户今天该完成的任务。
+用户有一个"{content}"日程表，今天需要完成以下任务：
+{today_tasks}
+
+## 要求
+1. 用鼓励的语气提醒
+2. 如果有多项，鼓励用户按顺序完成
+3. 2-3句语音版本，自然口语化
+4. 飞书版本简洁带emoji
+5. 直接输出提醒内容，不要JSON格式。"""
+
+
+async def _fetch_news(topic: str, max_retries: int = 2) -> str:
+    """尝试获取新闻（通过web_fetch或直接给提示词让AI模拟）。"""
+    try:
+        import httpx
+        # 尝试用新闻API - 使用一个简单的公开源
+        search_urls = {
+            "科技": "https://rsshub.app/36kr/motif/107",
+            "体育": "https://rsshub.app/sports",
+            "天气": None,  # 天气用AI模拟就好
+        }
+        url = search_urls.get(topic)
+        if url:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(url)
+                if resp.status_code == 200:
+                    # 简单提取文本前2000字
+                    text = resp.text[:2000]
+                    # 清洗HTML标签
+                    text = re.sub(r'<[^>]+>', '', text)
+                    return text[:1500]
+    except Exception as e:
+        print(f"[新闻] 获取外部新闻失败：{e}，使用AI生成")
+
+    # 降级：直接返回空，由AI生成模拟内容
+    return "（无外部新闻源，AI生成内容）"
+
+
+async def _execute_news_job(task: dict):
+    """执行新闻推送任务。"""
+    content = task["content"]
+    meta = task.get("meta_data") or {}
+    topic = meta.get("topic", "综合")
+    daily_hour = meta.get("daily_hour", 9)
+
+    print(f"[新闻] 执行新闻推送：{topic}")
+
+    # 获取新闻
+    news_text = await _fetch_news(topic)
+
+    # 用AI生成新闻摘要
+    from datetime import datetime
+    prompt = NEWS_PROMPT.format(
+        topic=topic,
+        date=datetime.now().strftime("%Y-%m-%d %H:%M")
+    )
+    if news_text and news_text != "（无外部新闻源，AI生成内容）":
+        user_msg = f"今天的{topic}新闻。\n\n参考资料：{news_text[:1000]}"
+    else:
+        user_msg = f"今天是{datetime.now().strftime('%m月%d日')}，请给我播报今天的{topic}新闻/资讯。"
+
+    result = await call_ai(
+        [{"role": "user", "content": user_msg}],
+        system_prompt=prompt,
+        temperature=0.7
+    )
+
+    news_summary = result["content"] if not result["error"] and result["content"] else (
+        f"今天{datetime.now().strftime('%m月%d日')}的{topic}资讯：暂无最新消息。"
+    )
+
+    # 语音播报
+    try:
+        await speak(news_summary, rate="+0%")
+    except Exception as e:
+        print(f"[新闻] 语音播报出错：{e}")
+
+    # 飞书推送
+    try:
+        user_open_id = _get_user_open_id(task["task_id"])
+        feishu_msg = f"📰 每日{topic}新闻\n\n{news_summary[:500]}"
+        if user_open_id:
+            await feishu_bot.send_message(user_open_id, feishu_msg)
+        else:
+            print("[新闻] 未找到用户open_id，跳过飞书通知")
+    except Exception as e:
+        print(f"[新闻] 飞书推送出错：{e}")
+
+    # 循环任务：安排明天同一时间继续
+    await _schedule_next_daily_task(task, daily_hour)
+
+
+async def _execute_travel_reminder(task: dict):
+    """执行出行提醒——提醒用户出发。"""
+    content = task["content"]
+    meta = task.get("meta_data") or {}
+    event_time = meta.get("event_time", "未知时间")
+    commute_minutes = meta.get("commute_minutes", 60)
+    flight_type = meta.get("flight_type", "domestic")
+    ftype_desc = "国内" if flight_type == "domestic" else "国际"
+
+    speech = f"叮咚！该出发了！你的{ftype_desc}出行{content}，{event_time}的时间，路上要{commute_minutes}分钟，现在出发刚刚好，别迟到哦！"
+    feishu_msg = f"✈️ 该出发了！\n{content}\n⏰ {event_time}\n🚗 {commute_minutes}分钟路程\n建议提前{3 if flight_type == 'international' else 2}小时到机场/车站"
+
+    print(f"[出行] 提醒出发：{content} at {event_time}")
+
+    try:
+        await speak(speech, rate="+5%")
+    except Exception as e:
+        print(f"[出行] 语音播报出错：{e}")
+
+    try:
+        user_open_id = _get_user_open_id(task["task_id"])
+        if user_open_id:
+            await feishu_bot.send_message(user_open_id, feishu_msg)
+        else:
+            print("[出行] 未找到用户open_id，跳过飞书通知")
+    except Exception as e:
+        print(f"[出行] 飞书推送出错：{e}")
+    task_manager.mark_reminded(task["task_id"])
+
+
+async def _execute_schedule_reminder(task: dict):
+    """执行日程表提醒——提醒今天该做的作业/任务。"""
+    content = task["content"]
+    meta = task.get("meta_data") or {}
+    schedule = meta.get("schedule", [])
+
+    if not schedule:
+        print(f"[日程] 任务 {task['task_id']} 没有日程数据")
+        return
+
+    # 找到今天的安排
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    today_items = []
+    for day in schedule:
+        if day.get("date") == today_str:
+            today_items = day.get("items", [])
+            break
+
+    if not today_items:
+        # 今天没安排，跳过去
+        task_manager.mark_reminded(task["task_id"])
+        return
+
+    # 用AI生成友好的提醒
+    deadline = meta.get("deadline", "未知")
+    tasks_str = "\n".join([f"  {i+1}. {item}" for i, item in enumerate(today_items)])
+
+    prompt = SCHEDULE_REMIND_PROMPT.format(
+        content=content,
+        today_tasks=tasks_str,
+        deadline=deadline
+    )
+
+    result = await call_ai(
+        [{"role": "user", "content": f"今天是{today_str}，提醒我完成今日任务。"}],
+        system_prompt=prompt,
+        temperature=0.8
+    )
+
+    reminder_text = result["content"] if not result["error"] and result["content"] else (
+        f"今天的任务来啦：\n{tasks_str}"
+    )
+
+    # 语音
+    try:
+        await speak(reminder_text, rate="+0%")
+    except Exception as e:
+        print(f"[日程] 语音播报出错：{e}")
+    # 飞书
+    try:
+        user_open_id = _get_user_open_id(task["task_id"])
+        feishu_msg = f"📅 {content}提醒\n今日任务：\n{tasks_str}"
+        if user_open_id:
+            await feishu_bot.send_message(user_open_id, feishu_msg)
+    except Exception as e:
+        print(f"[日程] 飞书推送出错：{e}")
+
+    # 安排明天继续
+    remind_hour = _parse_remind_hour(meta.get("remind_time"))
+    await _schedule_next_daily_task(task, remind_hour)
+
+
+def _parse_remind_hour(remind_time: str) -> int:
+    """从'remind_time'解析小时（如 '11:00' -> 11, '早上8点' -> 8）。"""
+    if not remind_time:
+        return 9
+    try:
+        return int(re.search(r'(\d{1,2})', remind_time).group(1))
+    except Exception:
+        return 9
+
+
+async def _schedule_next_daily_task(task: dict, hour: int):
+    """为每日循环的智能任务（news/schedule）安排明天的触达。
+    复用同一 task_id，通过恢复 pending 状态 + DateTrigger 在明天 hour 点触发。
+    """
+    from datetime import datetime, timedelta
+    try:
+        # 取消旧 job（如果有）
+        try:
+            scheduler.remove_job(f"task_{task['task_id']}")
+        except Exception:
+            pass
+        # 重置提醒状态，保证明天还能触发（status保持pending即可）
+        task_manager.mark_reminded(task["task_id"])
+        tomorrow = (datetime.now() + timedelta(days=1)).replace(hour=hour, minute=0, second=0, microsecond=0)
+        scheduler.add_job(
+            reminder_callback,
+            trigger=DateTrigger(run_date=tomorrow),
+            args=[task["task_id"]],
+            id=f"task_{task['task_id']}",
+            replace_existing=True
+        )
+        print(f"[调度器] 已安排 {task['content']} 明天 {hour:02d}:00 继续")
+    except Exception as e:
+        print(f"[调度器] 安排次日任务出错：{e}")
+

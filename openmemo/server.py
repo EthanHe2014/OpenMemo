@@ -107,9 +107,15 @@ async def _handle_feishu_message(open_id: str, text: str, message_id: str):
     try:
         print(f"[Feishu] Message from {open_id}: {text}")
         
-        # Process the message through conversation pipeline
-        # Don't speak for Feishu messages (user is on phone, not near Mac)
-        reply = await process_message(open_id, text, speak_response=False)
+        # Process the message with a timeout so Feishu always gets a reply
+        try:
+            reply = await asyncio.wait_for(
+                process_message(open_id, text, speak_response=False),
+                timeout=25.0  # Max 25s for the whole AI pipeline
+            )
+        except asyncio.TimeoutError:
+            print(f"[Feishu] AI processing timed out for {open_id}")
+            reply = "AI 服务正在忙，请稍后再试或换个问题问我 🙏"
         
         # Send reply back via Feishu
         success = await feishu_bot.send_message(open_id, reply)
@@ -119,6 +125,11 @@ async def _handle_feishu_message(open_id: str, text: str, message_id: str):
             print(f"[Feishu] Failed to send reply to {open_id}")
     except Exception as e:
         print(f"[Feishu] Error handling message: {e}")
+        # Last resort: try to notify the user
+        try:
+            await feishu_bot.send_message(open_id, "出错了，请稍后再试 🙏")
+        except:
+            pass
 
 
 # ─── REST API ───────────────────────────────────────────────
@@ -169,7 +180,10 @@ async def create_task(request: Request):
         trigger_time=body.get("trigger_time"),
         priority=body.get("priority", "medium"),
         is_recurring=body.get("is_recurring"),
-        notes=body.get("notes")
+        notes=body.get("notes"),
+        duration_minutes=body.get("duration_minutes"),
+        task_type=body.get("task_type", "normal"),
+        meta_data=body.get("meta_data")
     )
     
     # Schedule if time is set

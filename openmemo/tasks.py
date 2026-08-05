@@ -23,6 +23,7 @@ def init_db():
         task_id INTEGER PRIMARY KEY AUTOINCREMENT,
         content TEXT NOT NULL,
         trigger_time TEXT,
+        duration_minutes INTEGER DEFAULT NULL,
         priority TEXT DEFAULT 'medium',
         status TEXT DEFAULT 'pending',
         is_recurring TEXT DEFAULT NULL,
@@ -32,6 +33,28 @@ def init_db():
         notes TEXT DEFAULT NULL
     )
     """)
+
+    # Migration: add duration_minutes column if it doesn't exist (existing DBs)
+    try:
+        cursor.execute("ALTER TABLE tasks ADD COLUMN duration_minutes INTEGER DEFAULT NULL")
+        conn.commit()
+        print("Migrated: added duration_minutes column")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    try:
+        cursor.execute("ALTER TABLE tasks ADD COLUMN task_type TEXT DEFAULT 'normal'")
+        conn.commit()
+        print("Migrated: added task_type column")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
+    try:
+        cursor.execute("ALTER TABLE tasks ADD COLUMN meta_data TEXT DEFAULT NULL")
+        conn.commit()
+        print("Migrated: added meta_data column")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
     
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS conversations (
@@ -49,6 +72,7 @@ def init_db():
     CREATE TABLE IF NOT EXISTS pending_slots (
         pending_id INTEGER PRIMARY KEY AUTOINCREMENT,
         session_id TEXT NOT NULL,
+        intent TEXT DEFAULT 'ADD_TASK',
         partial_slots TEXT NOT NULL,
         missing_slots TEXT NOT NULL,
         original_message TEXT,
@@ -56,6 +80,14 @@ def init_db():
     )
     """)
     
+    # Migration: add intent column to pending_slots if missing (existing DBs)
+    try:
+        cursor.execute("ALTER TABLE pending_slots ADD COLUMN intent TEXT DEFAULT 'ADD_TASK'")
+        conn.commit()
+        print("Migrated: added intent column to pending_slots")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
     conn.commit()
     conn.close()
     print(f"Database initialized at {DB_PATH}")
@@ -69,15 +101,19 @@ class TaskManager:
     
     def add_task(self, content: str, trigger_time: str = None, 
                  priority: str = "medium", is_recurring: str = None,
-                 notes: str = None) -> dict:
-        """Add a new task"""
+                 notes: str = None, duration_minutes: int = None,
+                 task_type: str = "normal", meta_data: dict = None) -> dict:
+        """Add a new task. task_type: normal/news/travel/schedule. meta_data: intent-specific JSON."""
         conn = get_db()
         cursor = conn.cursor()
         
+        meta_json = json.dumps(meta_data, ensure_ascii=False) if meta_data else None
         cursor.execute("""
-        INSERT INTO tasks (content, trigger_time, priority, is_recurring, notes)
-        VALUES (?, ?, ?, ?, ?)
-        """, (content, trigger_time, priority, is_recurring, notes))
+        INSERT INTO tasks (content, trigger_time, priority, is_recurring, notes, duration_minutes,
+                           task_type, meta_data)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (content, trigger_time, priority, is_recurring, notes, duration_minutes,
+              task_type, meta_json))
         
         task_id = cursor.lastrowid
         conn.commit()
@@ -94,7 +130,13 @@ class TaskManager:
         conn.close()
         
         if row:
-            return dict(row)
+            d = dict(row)
+            if d.get("meta_data"):
+                try:
+                    d["meta_data"] = json.loads(d["meta_data"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            return d
         return None
     
     def list_tasks(self, status: str = None, limit: int = 20) -> List[dict]:
@@ -121,12 +163,21 @@ class TaskManager:
         
         rows = cursor.fetchall()
         conn.close()
-        return [dict(row) for row in rows]
+        result = []
+        for row in rows:
+            d = dict(row)
+            if d.get("meta_data"):
+                try:
+                    d["meta_data"] = json.loads(d["meta_data"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            result.append(d)
+        return result
     
     def update_task(self, task_id: int, **kwargs) -> Optional[dict]:
         """Update a task's fields"""
         allowed_fields = ['content', 'trigger_time', 'priority', 'status', 
-                         'is_recurring', 'notes', 'reminder_sent']
+                         'is_recurring', 'notes', 'reminder_sent', 'duration_minutes']
         
         updates = []
         values = []
@@ -261,7 +312,8 @@ class ConversationManager:
         return [{"role": m["role"], "content": m["content"]} for m in history]
     
     def save_pending_slots(self, session_id: str, partial_slots: dict, 
-                           missing_slots: list, original_message: str = None):
+                           missing_slots: list, original_message: str = None,
+                           intent: str = "ADD_TASK"):
         """Save partially filled slots awaiting user completion"""
         # Remove any existing pending for this session
         self.clear_pending_slots(session_id)
@@ -269,9 +321,9 @@ class ConversationManager:
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute("""
-        INSERT INTO pending_slots (session_id, partial_slots, missing_slots, original_message)
-        VALUES (?, ?, ?, ?)
-        """, (session_id, json.dumps(partial_slots), json.dumps(missing_slots), original_message))
+        INSERT INTO pending_slots (session_id, intent, partial_slots, missing_slots, original_message)
+        VALUES (?, ?, ?, ?, ?)
+        """, (session_id, intent, json.dumps(partial_slots), json.dumps(missing_slots), original_message))
         conn.commit()
         conn.close()
     
@@ -289,6 +341,7 @@ class ConversationManager:
         
         if row:
             return {
+                "intent": row["intent"] if "intent" in row.keys() else "ADD_TASK",
                 "partial_slots": json.loads(row["partial_slots"]),
                 "missing_slots": json.loads(row["missing_slots"]),
                 "original_message": row["original_message"]

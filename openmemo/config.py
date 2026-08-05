@@ -10,7 +10,7 @@ load_dotenv(BASE_DIR / ".env")
 # AI Configuration
 AI_BASE_URL = os.getenv("AI_BASE_URL", "https://yuanyuaicloud.cn/v1")
 AI_API_KEY = os.getenv("AI_API_KEY", "")
-AI_MODEL = os.getenv("AI_MODEL", "glm-5.1")
+AI_MODEL = os.getenv("AI_MODEL", "glm-5.2")
 
 # Feishu Configuration
 FEISHU_APP_ID = os.getenv("FEISHU_APP_ID", "")
