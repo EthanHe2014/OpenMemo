@@ -63,6 +63,17 @@ def parse_duration_string(duration_str: str) -> int | None:
             val += cn_map.get(ch, 0)
         return val * 60
     
+    # 英文单词小时（one hour / two hours / half an hour / an hour）
+    en_num = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+              "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+    if re.search(r'\b(half\s+an?|an?)\s+hour', s):
+        if "half" in s:
+            return 30
+        return 60
+    em = re.search(r'\b(' + "|".join(en_num.keys()) + r')\s+hours?', s)
+    if em:
+        return en_num[em.group(1)] * 60
+    
     # 直接数字（没有单位）——保守猜测为分钟
     plain = re.search(r'(\d+)', s)
     if plain:
@@ -494,8 +505,9 @@ def _humanize_missing_ask(slots: dict, still_missing: list, ai_reply: str = None
     content = slots.get("content", "")
     # 利用 AI 提供的自然追问（若只缺一个 slot，AI 通常提供了更好的问法）
     if ai_reply and len(still_missing) == 1:
-        # 但避免 AI 重复创建任务（reply 里若含“已添加”则改用模板）
-        if "已添加" not in ai_reply and "添加了" not in ai_reply:
+        # 但避免 AI 重复创建任务或幻觉名词（reply 里若含“已添加”/“添加了”则改用模板；
+        # 追问 duration 时 AI 常幻觉名词，直接用确定性模板）
+        if "已添加" not in ai_reply and "添加了" not in ai_reply and still_missing[0] != "duration":
             return ai_reply
     
     asks = []
@@ -503,7 +515,7 @@ def _humanize_missing_ask(slots: dict, still_missing: list, ai_reply: str = None
         if s == "time":
             asks.append(f"{content}想安排在几点呀？")
         elif s == "duration":
-            asks.append("大概要花多久时间呀？")
+            asks.append(f"{content}大概要多久呀？")
         elif s == "content":
             asks.append("想做什么呢？")
         elif s == "priority":
