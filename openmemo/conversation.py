@@ -74,7 +74,9 @@ def parse_duration_string(duration_str: str) -> int | None:
     if em:
         return en_num[em.group(1)] * 60
     
-    # 直接数字（没有单位）——保守猜测为分钟
+    # 直接数字（没有单位）——保守猜测为分钟；但含时间标记（点/时/o'clock/am/pm）的不算
+    if re.search(r'[点时]|o\s*\'?clock|\b(am|pm)\b', s):
+        return None
     plain = re.search(r'(\d+)', s)
     if plain:
         return int(plain.group(1))
@@ -329,7 +331,11 @@ async def process_message(session_id: str, user_message: str,
         result = await analyze_intent(user_message, context)
         pending_intent = pending.get("intent", "ADD_TASK")
         
-        merged_slots = {**pending["partial_slots"], **result["slots"]}
+        # pending 分支：保留已确定的字段（AI 可能重写 content 等关键信息）
+        merged_slots = dict(pending["partial_slots"])
+        for k, v in result["slots"].items():
+            if k not in merged_slots or not merged_slots.get(k):
+                merged_slots[k] = v
         still_missing = [s for s in pending["missing_slots"] if s not in result["slots"] or not result["slots"].get(s)]
         
         # 确定性补充：从本次用户消息挖出缺失的字段（不依赖AI提取）
