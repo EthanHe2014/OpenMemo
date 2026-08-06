@@ -33,6 +33,14 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Force UTF-8 charset on all JSON responses — fixes Chinese/emoji rendering in iOS client
+@app.middleware("http")
+async def add_utf8_charset(request: Request, call_next):
+    response = await call_next(request)
+    if "application/json" in response.headers.get("content-type", ""):
+        response.headers["content-type"] = "application/json; charset=utf-8"
+    return response
+
 # Deduplication: Track recently processed message IDs
 _processed_messages = set()
 _MAX_PROCESSED = 1000  # Keep last 1000 message IDs
