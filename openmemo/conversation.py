@@ -355,11 +355,11 @@ async def process_message(session_id: str, user_message: str,
                 still_missing.append("duration")
         # TRAVEL_EVENT：commute_minutes / flight_type
         elif pending_intent == "TRAVEL_EVENT":
-            if "commute_minutes" in still_missing:
-                cm = re.search(r'(\d{1,3})\s*(分钟|min|mins)?', user_message)
-                if cm:
-                    merged_slots["commute_minutes"] = int(cm.group(1))
-                    still_missing = [s for s in still_missing if s != "commute_minutes"]
+            # 支持路上耗时："1小时"→60，"30分钟"→30，"1.5小时"→90
+            commute_value = _parse_commute_minutes(user_message)
+            if commute_value is not None and ("commute_minutes" in still_missing or commute_value != merged_slots.get("commute_minutes")):
+                merged_slots["commute_minutes"] = commute_value
+                still_missing = [s for s in still_missing if s != "commute_minutes"]
             if "flight_type" in still_missing:
                 if any(k in user_message for k in ["国际", "international", "境外"]):
                     merged_slots["flight_type"] = "international"
@@ -367,6 +367,22 @@ async def process_message(session_id: str, user_message: str,
                 elif any(k in user_message for k in ["国内", "domestic"]):
                     merged_slots["flight_type"] = "domestic"
                     still_missing = [s for s in still_missing if s != "flight_type"]
+            if "event_time" in still_missing:
+                # 若消息自带日期词（明天/今天等），交给 parse 自己处理；
+                # 否则用确定性解析，并应用 turn-1 记录的 day_offset（如“明天赶飞机”后补“下午三点”应对齐到明天）。
+                day_word = any(k in user_message for k in ["今天", "明天", "后天", "today", "tomorrow"])
+                et = _extract_time_from_text(user_message)
+                if et and not day_word:
+                    meta = merged_slots.get("_meta") or pending.get("_meta") or {}
+                    offset = meta.get("day_offset")
+                    if offset:
+                        try:
+                            dt = datetime.strptime(et, "%Y-%m-%d %H:%M") + timedelta(days=int(offset))
+                            et = dt.strftime("%Y-%m-%d %H:%M")
+                        except (ValueError, TypeError):
+                            pass
+                    merged_slots["event_time"] = et
+                    still_missing = [s for s in still_missing if s != "event_time"]
         # NEWS_JOB：time / topic
         elif pending_intent == "NEWS_JOB":
             # 数字+点 = 时间
@@ -427,7 +443,7 @@ async def process_message(session_id: str, user_message: str,
             return reply
         else:
             conv_manager.save_pending_slots(session_id, merged_slots, still_missing, intent=pending_intent)
-            reply = _humanize_missing_ask(merged_slots, still_missing, result.get("reply"))
+            reply = _humanize_missing_ask(merged_slots, still_missing, result.get("reply"), intent=pending_intent)
             conv_manager.add_message(session_id, "assistant", reply, 
                                     intent="SLOT_FILL", slots=merged_slots)
             if speak_response:
@@ -465,7 +481,7 @@ async def process_message(session_id: str, user_message: str,
             conv_manager.save_pending_slots(
                 session_id, slots, missing, user_message
             )
-            reply = _humanize_missing_ask(slots, missing, result.get("reply"))
+            reply = _humanize_missing_ask(slots, missing, result.get("reply"), intent=result["intent"])
             conv_manager.add_message(session_id, "assistant", reply, 
                                     intent="SLOT_FILL", slots=slots)
         else:
@@ -493,7 +509,7 @@ async def process_message(session_id: str, user_message: str,
         return await _handle_news_job(result, session_id, speak_response)
     
     elif result["intent"] == "TRAVEL_EVENT":
-        return await _handle_travel_event(result, session_id, speak_response)
+        return await _handle_travel_event(result, session_id, speak_response, user_message)
     
     elif result["intent"] == "SCHEDULE":
         return await _handle_schedule(result, session_id, speak_response)
@@ -506,15 +522,26 @@ async def process_message(session_id: str, user_message: str,
         return reply
 
 
-def _humanize_missing_ask(slots: dict, still_missing: list, ai_reply: str = None) -> str:
+def _humanize_missing_ask(slots: dict, still_missing: list, ai_reply: str = None, intent: str = None) -> str:
     """追问缺失信息，用自然对话语气（优先用 AI 的 reply，否则用模板）。"""
     content = slots.get("content", "")
     # 利用 AI 提供的自然追问（若只缺一个 slot，AI 通常提供了更好的问法）
     if ai_reply and len(still_missing) == 1:
         # 但避免 AI 重复创建任务或幻觉名词（reply 里若含“已添加”/“添加了”则改用模板；
-        # 追问 duration 时 AI 常幻觉名词，直接用确定性模板）
-        if "已添加" not in ai_reply and "添加了" not in ai_reply and still_missing[0] != "duration":
-            return ai_reply
+        # 追问 duration/出行时间时 AI 常幻觉名词，直接用确定性模板）
+        # 关键：若 AI reply 里出现与已确定 content 不同的“任务名词”，说明 AI 幻觉/改写了主体 → 不用它的 reply
+        noun_swapped = False
+        if content:
+            for bad in ("开会", "打球", "游泳", "买菜", "作业", "新闻", "会议", "任务", "跑腿"):
+                if bad in ai_reply and bad != content:
+                    noun_swapped = True
+                    break
+        if ("已添加" not in ai_reply and "添加了" not in ai_reply
+                and still_missing[0] != "duration"
+                and not noun_swapped):
+            # TRAVEL_EVENT/SCHEDULE 的 time 追问也容易幻觉，交给确定性模板
+            if intent not in ("TRAVEL_EVENT", "SCHEDULE"):
+                return ai_reply
     
     asks = []
     for s in still_missing:
@@ -526,6 +553,20 @@ def _humanize_missing_ask(slots: dict, still_missing: list, ai_reply: str = None
             asks.append("想做什么呢？")
         elif s == "priority":
             asks.append("这个任务重要吗？")
+        elif s == "commute_minutes":
+            asks.append(f"{content}，出发到机场/车站大概要多久呀？")
+        elif s == "flight_type":
+            asks.append(f"{content}是国内还是国际出行呀？")
+        elif s == "event_time":
+            asks.append(f"{content}安排在几点呀？")
+        elif s == "topic":
+            asks.append("想定时推送哪类内容呀（比如科技/体育/财经）？")
+        elif s == "tasks":
+            asks.append("具体要做哪些任务呀？")
+        elif s == "deadline":
+            asks.append("大概什么时候完成呀？")
+        elif s == "remind_time":
+            asks.append("希望每天几点提醒你呀？")
         else:
             asks.append(f"请补充{FILLABLE_SLOTS.get(s, s)}：")
     
@@ -745,7 +786,7 @@ async def _handle_news_job(result: dict, session_id: str, speak_response: bool =
     # 追问缺失信息
     if missing:
         conv_manager.save_pending_slots(session_id, slots, missing, intent="NEWS_JOB")
-        reply = result.get("reply") or _humanize_missing_ask(slots, missing)
+        reply = result.get("reply") or _humanize_missing_ask(slots, missing, intent="NEWS_JOB")
         conv_manager.add_message(session_id, "assistant", reply, intent="SLOT_FILL", slots=slots)
         if speak_response:
             await speak(reply)
@@ -777,20 +818,54 @@ async def _handle_news_job(result: dict, session_id: str, speak_response: bool =
     return reply
 
 
-async def _handle_travel_event(result: dict, session_id: str, speak_response: bool = True) -> str:
+def _parse_commute_minutes(user_message: str):
+    """从用户消息解析路上耗时（分钟）。
+    支持 '1小时'→60、'30分钟'→30、'1.5小时'→90、'半小时'→30。
+    若提及的是“天”（如“7天”），视为非分钟数，返回 None（避免误填充）。
+    """
+    s = user_message.strip()
+    if "天" in s or "day" in s.lower():
+        return None
+    # 半小时 / 一个半小时
+    if re.search(r'半个(小时)?', s):
+        return 30
+    # X小时 / X.H小时
+    h = re.search(r'(\d+(?:\.\d+)?)\s*小\s*时', s)
+    if h:
+        return int(round(float(h.group(1)) * 60))
+    # X分钟
+    m = re.search(r'(\d+)\s*分\s*钟', s)
+    if m:
+        return int(m.group(1))
+    # 纯数字 + “小时/分钟”之外的裸数字：保守当作不是耗时
+    return None
+
+
+async def _handle_travel_event(result: dict, session_id: str, speak_response: bool = True, user_message: str = None) -> str:
     """TRAVEL_EVENT：出行事件，反算出发提醒时间。
     """
     slots = dict(result.get("slots") or {})
     missing = list(result.get("missing_slots") or [])
-    
+
     if missing:
+        # 记录用户原话里的相对日期意图（今天/明天/后天），供后续补时间时对齐到正确的天
+        meta = dict(slots.get("_meta") or {})
+        if user_message:
+            if "后天" in user_message:
+                meta["day_offset"] = 2
+            elif "明天" in user_message or "tomorrow" in user_message.lower():
+                meta["day_offset"] = 1
+            elif "今天" in user_message or "today" in user_message.lower():
+                meta["day_offset"] = 0
+        if "_meta" not in slots:
+            slots["_meta"] = meta
         conv_manager.save_pending_slots(session_id, slots, missing, intent="TRAVEL_EVENT")
-        reply = result.get("reply") or _humanize_missing_ask(slots, missing)
+        reply = result.get("reply") or _humanize_missing_ask(slots, missing, intent="TRAVEL_EVENT")
         conv_manager.add_message(session_id, "assistant", reply, intent="SLOT_FILL", slots=slots)
         if speak_response:
             await speak(reply)
         return reply
-    
+
     # 信息全了 → 反算
     content = slots.get("content") or "出行"
     event_time_raw = slots.get("event_time") or ""
@@ -838,7 +913,7 @@ async def _handle_schedule(result: dict, session_id: str, speak_response: bool =
     
     if missing:
         conv_manager.save_pending_slots(session_id, slots, missing, intent="SCHEDULE")
-        reply = result.get("reply") or _humanize_missing_ask(slots, missing)
+        reply = result.get("reply") or _humanize_missing_ask(slots, missing, intent="SCHEDULE")
         conv_manager.add_message(session_id, "assistant", reply, intent="SLOT_FILL", slots=slots)
         if speak_response:
             await speak(reply)
