@@ -327,6 +327,24 @@ async def process_message(session_id: str, user_message: str,
     pending = conv_manager.get_pending_slots(session_id)
     
     if pending:
+        # —— 用户已放弃/否定当前正在收集的任务 ——
+        # 一旦检测到用户否定或转移当前任务，就清掉挂起状态并把控制权交回 AI，让它自由判断。
+        # 避免"死循环"一直追问同一个问题直到用户抓狂。
+        denial = ["没说要", "没说", "不是", "不要", "我没有", "不告诉你", "不想说",
+                  "不搞了", "不弄了", "不说这个", "不说飞机", "不赶", "换个话题",
+                  "算了吧", "别的", "no", " nope", "never mind"]
+        if any(k in user_message.lower() for k in denial):
+            pending_intent = pending.get("intent", "ADD_TASK")
+            conv_manager.clear_pending_slots(session_id)
+            context = conv_manager.get_context_for_ai(session_id)
+            result = await analyze_intent(user_message, context)
+            # 交给 AI 全权处理后续（多半会自然转成 CHAT 或新任务）
+            reply = result.get("reply") or ("好呀，那先不弄这个啦。有需要随时找我～")
+            conv_manager.add_message(session_id, "assistant", reply, intent=result["intent"])
+            if speak_response:
+                await speak(reply)
+            return reply
+        
         context = conv_manager.get_context_for_ai(session_id)
         result = await analyze_intent(user_message, context)
         pending_intent = pending.get("intent", "ADD_TASK")
@@ -442,9 +460,23 @@ async def process_message(session_id: str, user_message: str,
                 await speak(reply)
             return reply
         else:
+            # —— 防死循环：记录连续追问轮数，如果用户多次没有回答/拒绝了当前问题，就放弃挂起交给 AI。 ——
+            meta = merged_slots.get("_meta") or {}
+            rounds = int(meta.get("_rounds", 0)) + 1
+            meta["_rounds"] = rounds
+            if rounds >= 3:
+                # 连续多次没解决同一问题 → 放弃挂起，自然交还 AI（不再追问）
+                conv_manager.clear_pending_slots(session_id)
+                reply = result.get("reply") or ("好呀，那我先不追问啦～有需要随时叫我！")
+                conv_manager.add_message(session_id, "assistant", reply,
+                                        intent="SLOT_FILL", slots={})
+                if speak_response:
+                    await speak(reply)
+                return reply
+            merged_slots["_meta"] = meta
             conv_manager.save_pending_slots(session_id, merged_slots, still_missing, intent=pending_intent)
             reply = _humanize_missing_ask(merged_slots, still_missing, result.get("reply"), intent=pending_intent)
-            conv_manager.add_message(session_id, "assistant", reply, 
+            conv_manager.add_message(session_id, "assistant", reply,
                                     intent="SLOT_FILL", slots=merged_slots)
             if speak_response:
                 await speak(reply)
@@ -546,19 +578,19 @@ def _humanize_missing_ask(slots: dict, still_missing: list, ai_reply: str = None
     asks = []
     for s in still_missing:
         if s == "time":
-            asks.append(f"{content}想安排在几点呀？")
+            asks.append("想安排在几点呀？")
         elif s == "duration":
-            asks.append(f"{content}大概要多久呀？")
+            asks.append("大概要多久呀？")
         elif s == "content":
             asks.append("想做什么呢？")
         elif s == "priority":
             asks.append("这个任务重要吗？")
         elif s == "commute_minutes":
-            asks.append(f"{content}，出发到机场/车站大概要多久呀？")
+            asks.append("出发到机场/车站大概要多久呀？")
         elif s == "flight_type":
-            asks.append(f"{content}是国内还是国际出行呀？")
+            asks.append("是国内还是国际出行呀？")
         elif s == "event_time":
-            asks.append(f"{content}安排在几点呀？")
+            asks.append("安排在几点呀？")
         elif s == "topic":
             asks.append("想定时推送哪类内容呀（比如科技/体育/财经）？")
         elif s == "tasks":
@@ -569,11 +601,12 @@ def _humanize_missing_ask(slots: dict, still_missing: list, ai_reply: str = None
             asks.append("希望每天几点提醒你呀？")
         else:
             asks.append(f"请补充{FILLABLE_SLOTS.get(s, s)}：")
-    
+
     if len(asks) == 1:
-        return asks[0]
-    prefix = f"关于{content}，" if content else ""
-    return prefix + "、".join(asks[:-1]) + "，还有" + asks[-1]
+        return (f"关于{content}，" if content else "") + asks[0]
+    # 多项缺时：主语说一次，然后并列几个简短问句，避免重复堆叠
+    head = f"关于{content}，还想知道：" if content else "还想知道："
+    return head + "".join(f"{i+1}. {a} " for i, a in enumerate(asks))
 
 
 async def _create_task_from_slots(slots: dict, session_id: str) -> str:
