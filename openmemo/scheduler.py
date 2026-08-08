@@ -475,15 +475,20 @@ async def _execute_travel_reminder(task: dict):
     """执行出行提醒——提醒用户出发。"""
     content = task["content"]
     meta = task.get("meta_data") or {}
-    event_time = meta.get("event_time", "未知时间")
-    commute_minutes = meta.get("commute_minutes", 60)
-    flight_type = meta.get("flight_type", "domestic")
-    ftype_desc = "国内" if flight_type == "domestic" else "国际"
+    # 优先念 AI 亲笔写的提醒原文
+    remind_text = meta.get("reminder_text")
+    if remind_text:
+        speech = remind_text
+        feishu_msg = remind_text
+    else:
+        event_time = meta.get("event_time", "未知时间")
+        commute_minutes = meta.get("commute_minutes", 60)
+        flight_type = meta.get("flight_type", "domestic")
+        ftype_desc = "国内" if flight_type == "domestic" else "国际"
+        speech = f"叮咚！该出发了！你的{ftype_desc}出行{content}，{event_time}的时间，路上要{commute_minutes}分钟，现在出发刚刚好，别迟到哦！"
+        feishu_msg = f"✈️ 该出发了！\n{content}\n⏰ {event_time}\n🚗 {commute_minutes}分钟路程\n建议提前{3 if flight_type == 'international' else 2}小时到机场/车站"
 
-    speech = f"叮咚！该出发了！你的{ftype_desc}出行{content}，{event_time}的时间，路上要{commute_minutes}分钟，现在出发刚刚好，别迟到哦！"
-    feishu_msg = f"✈️ 该出发了！\n{content}\n⏰ {event_time}\n🚗 {commute_minutes}分钟路程\n建议提前{3 if flight_type == 'international' else 2}小时到机场/车站"
-
-    print(f"[出行] 提醒出发：{content} at {event_time}")
+    print(f"[出行] 提醒出发：{content}")
 
     try:
         await speak(speech, rate="+5%")
@@ -508,6 +513,26 @@ async def _execute_schedule_reminder(task: dict):
     schedule = meta.get("schedule", [])
 
     if not schedule:
+        # 如果后端没生成 schedule 数组，但 AI 给了 reminder_text（新架构：AI 全权负责内容），
+        # 直接念 AI 写好的提醒原文。
+        remind_text = meta.get("reminder_text")
+        if remind_text:
+            print(f"[日程] 执行AI原文提醒：{content}")
+            try:
+                await speak(remind_text, rate="+0%")
+            except Exception as e:
+                print(f"[日程] 语音播报出错：{e}")
+            try:
+                user_open_id = _get_user_open_id(task["task_id"])
+                feishu_msg = f"📅 {content}提醒\n{remind_text[:500]}"
+                if user_open_id:
+                    await feishu_bot.send_message(user_open_id, feishu_msg)
+            except Exception as e:
+                print(f"[日程] 飞书推送出错：{e}")
+            task_manager.mark_reminded(task["task_id"])
+            remind_hour = _parse_remind_hour(meta.get("remind_time"))
+            await _schedule_next_daily_task(task, remind_hour)
+            return
         print(f"[日程] 任务 {task['task_id']} 没有日程数据")
         return
 
