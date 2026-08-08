@@ -245,6 +245,20 @@ async def get_conversations(session_id: str, limit: int = 20):
     return {"messages": messages, "count": len(messages)}
 
 
+@app.get("/api/sessions")
+async def list_sessions():
+    """List all chat sessions (most recent first) for the sidebar."""
+    sessions = conv_manager.list_sessions()
+    return {"sessions": sessions, "count": len(sessions)}
+
+
+@app.delete("/api/sessions/{session_id}")
+async def delete_session(session_id: str):
+    """Delete a session and all its history."""
+    conv_manager.delete_session(session_id)
+    return {"success": True, "deleted": session_id}
+
+
 # ─── Run Server ─────────────────────────────────────────────
 
 def run_server():

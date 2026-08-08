@@ -355,3 +355,41 @@ class ConversationManager:
         cursor.execute("DELETE FROM pending_slots WHERE session_id = ?", (session_id,))
         conn.commit()
         conn.close()
+
+    def list_sessions(self) -> list:
+        """List all distinct sessions with title, last activity, and message count.
+        Most recent first.
+        """
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT session_id,
+                   COUNT(*)                          AS msg_count,
+                   MAX(created_at)                   AS last_at,
+                   (SELECT content FROM conversations c2
+                    WHERE c2.session_id = c.session_id AND c2.role = 'user'
+                    ORDER BY c2.conv_id ASC LIMIT 1) AS first_user_msg
+            FROM conversations c
+            GROUP BY session_id
+            ORDER BY last_at DESC
+        """)
+        rows = cursor.fetchall()
+        conn.close()
+        sessions = []
+        for row in rows:
+            sessions.append({
+                "session_id": row["session_id"],
+                "title": (row["first_user_msg"] or "New chat")[:40],
+                "last_at": row["last_at"],
+                "msg_count": row["msg_count"],
+            })
+        return sessions
+
+    def delete_session(self, session_id: str):
+        """Delete a session and all its conversations + pending slots."""
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM conversations WHERE session_id = ?", (session_id,))
+        cursor.execute("DELETE FROM pending_slots WHERE session_id = ?", (session_id,))
+        conn.commit()
+        conn.close()
