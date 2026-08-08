@@ -1,4 +1,4 @@
-"""Voice output module - Edge TTS + Mac mini speakers"""
+"""语音输出模块 —— Edge TTS + Mac mini 扬声器"""
 import asyncio
 import os
 import subprocess

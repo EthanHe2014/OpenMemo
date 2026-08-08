@@ -1,4 +1,4 @@
-"""Task management with SQLite storage"""
+"""基于 SQLite 的任务管理"""
 import sqlite3
 import json
 from datetime import datetime

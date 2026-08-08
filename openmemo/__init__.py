@@ -1,2 +1,2 @@
-"""OpenMemo - AI-powered personal voice assistant with memory"""
+"""OpenMemo —— AI 驱动的个人语音助手，带记忆与主动提醒能力"""
 __version__ = "0.1.0"

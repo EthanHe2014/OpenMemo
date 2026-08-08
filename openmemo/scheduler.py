@@ -1,4 +1,4 @@
-"""Scheduler module - APScheduler for task reminders"""
+"""调度模块 —— 基于 APScheduler 的任务提醒"""
 import asyncio
 import re
 from datetime import datetime

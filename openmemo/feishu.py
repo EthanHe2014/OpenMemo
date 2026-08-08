@@ -1,4 +1,4 @@
-"""Feishu bot integration for OpenMemo"""
+"""OpenMemo 的飞书机器人接入"""
 import json
 import hashlib
 import time

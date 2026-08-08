@@ -1,4 +1,4 @@
-"""Configuration management for OpenMemo"""
+"""OpenMemo 配置管理"""
 import os
 from pathlib import Path
 from dotenv import load_dotenv

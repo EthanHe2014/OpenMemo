@@ -1,4 +1,4 @@
-"""OpenMemo CLI entry point"""
+"""OpenMemo 命令行入口"""
 import sys
 import asyncio
 from .server import run_server

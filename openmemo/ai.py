@@ -1,4 +1,4 @@
-"""AI integration module - glm-5.2 via custom endpoint"""
+"""AI 接入模块 —— 通过自定义接口调用 glm-5.2"""
 import asyncio
 import json
 import re

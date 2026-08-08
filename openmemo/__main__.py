@@ -1,4 +1,4 @@
-"""OpenMemo - entry point for `python -m openmemo`"""
+"""OpenMemo —— `python -m openmemo` 的入口"""
 from .cli import main
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""OpenMemo FastAPI server - Main entry point"""
+"""OpenMemo FastAPI 服务 —— 主入口"""
 import json
 import asyncio
 from contextlib import asynccontextmanager
