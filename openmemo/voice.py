@@ -58,6 +58,20 @@ def play_audio(audio_path: Path, volume: float = 1.0):
         print(f"Audio playback error: {e}")
 
 
+def show_notification(title: str, message: str):
+    """macOS 通知横幅（右上角弹出）。语音之外的可视提醒，远程/静音时也能看到。"""
+    try:
+        safe_title = str(title).replace('"', "'")[:60]
+        safe_msg = str(message).replace('"', "'")[:200]
+        script = (
+            f'display notification "{safe_msg}" '
+            f'with title "{safe_title}" sound name "Glass"'
+        )
+        subprocess.run(["osascript", "-e", script], capture_output=True, timeout=15)
+    except Exception as e:
+        print(f"通知横幅失败: {e}")
+
+
 async def speak(text: str, voice: str = None, volume: float = 1.0, rate: str = "+0%") -> bool:
     """Generate speech and play it immediately.
     
@@ -75,6 +89,8 @@ async def speak(text: str, voice: str = None, volume: float = 1.0, rate: str = "
         # Run playback in a thread to not block
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, play_audio, audio_path, volume)
+        # 同时弹一个 macOS 通知横幅（右上角），静音/远程时也能看到
+        show_notification("OpenMemo 提醒", text)
         return True
     except Exception as e:
         print(f"Speech error: {e}")
