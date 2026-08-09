@@ -1,0 +1,287 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 50;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		07F5926A29BF2F9CC54152A536C939B4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 614F757EA85F66FC59F1938139F32337 /* Assets.xcassets */; };
+		1CB05777BB6758E7AC3FD5F6430DC271 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F09FE163DC246EA664209733F02BA7D1 /* ChatView.swift */; };
+		2DE81D56F4484C8B802F0F46D8E9512E /* OpenMemoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECFAFE7E7442BCC15E9C185B71AAE6DC /* OpenMemoApp.swift */; };
+		5EFE11A19AA90AD66B8CDC7CF86D417F /* TaskListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EA9D06452743221322319580ABAB234 /* TaskListView.swift */; };
+		62CAA70D95CF6E9EC22D31353DEFADC4 /* TaskListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6BB686A1F2274A64CA22FAA78160F46 /* TaskListViewModel.swift */; };
+		7ED051FA74363EDE488FB1D5464835D6 /* LocalNotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D99BF3FDC9FE5FFB1FF87BE32623D27 /* LocalNotificationManager.swift */; };
+		885A6C8C1714E34C44B570F1A04D9E5A /* Task.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF3D1609A5DDE7A9D549FADA992615F0 /* Task.swift */; };
+		ACFD02015216B0906D6D8197760EA888 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF73A5B7DF5609B7F5B3787E260F778C /* SettingsView.swift */; };
+		DA02BA6BB60124373031BCB6DE9A50CB /* AddTaskView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 857DA4318BB6EBB68DCB5D74A6E0D21E /* AddTaskView.swift */; };
+		E9CAA839B3F314F42ABDD36C5F9F0E7A /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13FA27488EB8D661C37BEAC94C868244 /* ChatViewModel.swift */; };
+		F4FCEEB6CA74E28E725F909E3393CA98 /* TaskDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 428BADDB32345CCA623D11F5F18D0E3C /* TaskDetailView.swift */; };
+		FFAE772ABEA631D7F1467FE9D74D52EB /* OpenMemoAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 524E53A89F8D859299CE9CF131352452 /* OpenMemoAPI.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		13FA27488EB8D661C37BEAC94C868244 /* ChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModel.swift; sourceTree = "<group>"; };
+		428BADDB32345CCA623D11F5F18D0E3C /* TaskDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDetailView.swift; sourceTree = "<group>"; };
+		524E53A89F8D859299CE9CF131352452 /* OpenMemoAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenMemoAPI.swift; sourceTree = "<group>"; };
+		5F36CB9D529969A9E2B0518B76E56E51 /* OpenMemoApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenMemoApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		614F757EA85F66FC59F1938139F32337 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		7D99BF3FDC9FE5FFB1FF87BE32623D27 /* LocalNotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNotificationManager.swift; sourceTree = "<group>"; };
+		857DA4318BB6EBB68DCB5D74A6E0D21E /* AddTaskView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddTaskView.swift; sourceTree = "<group>"; };
+		8EA9D06452743221322319580ABAB234 /* TaskListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskListView.swift; sourceTree = "<group>"; };
+		A6BB686A1F2274A64CA22FAA78160F46 /* TaskListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskListViewModel.swift; sourceTree = "<group>"; };
+		AF3D1609A5DDE7A9D549FADA992615F0 /* Task.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Task.swift; sourceTree = "<group>"; };
+		CF73A5B7DF5609B7F5B3787E260F778C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		ECFAFE7E7442BCC15E9C185B71AAE6DC /* OpenMemoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenMemoApp.swift; sourceTree = "<group>"; };
+		F09FE163DC246EA664209733F02BA7D1 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		09E2AE637C995186573D81950764662A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				5F36CB9D529969A9E2B0518B76E56E51 /* OpenMemoApp.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		1E17B9B93085129A1C4BF2113005A67D /* OpenMemoApp */ = {
+			isa = PBXGroup;
+			children = (
+				614F757EA85F66FC59F1938139F32337 /* Assets.xcassets */,
+				ECFAFE7E7442BCC15E9C185B71AAE6DC /* OpenMemoApp.swift */,
+				55A55357E883AC8380A2301D3773F9A9 /* Models */,
+				D34BA5767179ABDECA8894E81F3AF612 /* Networking */,
+				904FCA7DDFD93B316A78749F9EADF5D6 /* Services */,
+				8DF3681CBC1B4B95D1BE06B3FAF44E2B /* ViewModels */,
+				80C3304015B1D1B5D899F6EAC76A0F22 /* Views */,
+			);
+			path = OpenMemoApp;
+			sourceTree = "<group>";
+		};
+		55A55357E883AC8380A2301D3773F9A9 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				AF3D1609A5DDE7A9D549FADA992615F0 /* Task.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		80C3304015B1D1B5D899F6EAC76A0F22 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				857DA4318BB6EBB68DCB5D74A6E0D21E /* AddTaskView.swift */,
+				F09FE163DC246EA664209733F02BA7D1 /* ChatView.swift */,
+				CF73A5B7DF5609B7F5B3787E260F778C /* SettingsView.swift */,
+				428BADDB32345CCA623D11F5F18D0E3C /* TaskDetailView.swift */,
+				8EA9D06452743221322319580ABAB234 /* TaskListView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		8632C830A10372E32F08E0429935A30D = {
+			isa = PBXGroup;
+			children = (
+				1E17B9B93085129A1C4BF2113005A67D /* OpenMemoApp */,
+				09E2AE637C995186573D81950764662A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		8DF3681CBC1B4B95D1BE06B3FAF44E2B /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				13FA27488EB8D661C37BEAC94C868244 /* ChatViewModel.swift */,
+				A6BB686A1F2274A64CA22FAA78160F46 /* TaskListViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		904FCA7DDFD93B316A78749F9EADF5D6 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				7D99BF3FDC9FE5FFB1FF87BE32623D27 /* LocalNotificationManager.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		D34BA5767179ABDECA8894E81F3AF612 /* Networking */ = {
+			isa = PBXGroup;
+			children = (
+				524E53A89F8D859299CE9CF131352452 /* OpenMemoAPI.swift */,
+			);
+			path = Networking;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		AE7691E9C109112168ED48E34741138F /* OpenMemoApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9B1B46A8D8A546AD3F8FFD299988B52B /* Build configuration list for PBXNativeTarget "OpenMemoApp" */;
+			buildPhases = (
+				5FB120BC4304D491BB4F0B2653003053 /* Sources */,
+				4B73557137F2A11E077FB10376ABBB2B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OpenMemoApp;
+			productName = OpenMemoApp;
+			productReference = 5F36CB9D529969A9E2B0518B76E56E51 /* OpenMemoApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A76D3CFEAC23F56E788A759AC7028FDA /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 1000;
+				TargetAttributes = {
+					AE7691E9C109112168ED48E34741138F = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 94AA69AED21AF8EE13D1E3512A188651 /* Build configuration list for PBXProject "OpenMemoApp" */;
+			compatibilityVersion = "Xcode 9.3";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+			);
+			mainGroup = 8632C830A10372E32F08E0429935A30D;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				AE7691E9C109112168ED48E34741138F /* OpenMemoApp */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		4B73557137F2A11E077FB10376ABBB2B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				07F5926A29BF2F9CC54152A536C939B4 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		5FB120BC4304D491BB4F0B2653003053 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DA02BA6BB60124373031BCB6DE9A50CB /* AddTaskView.swift in Sources */,
+				1CB05777BB6758E7AC3FD5F6430DC271 /* ChatView.swift in Sources */,
+				E9CAA839B3F314F42ABDD36C5F9F0E7A /* ChatViewModel.swift in Sources */,
+				7ED051FA74363EDE488FB1D5464835D6 /* LocalNotificationManager.swift in Sources */,
+				FFAE772ABEA631D7F1467FE9D74D52EB /* OpenMemoAPI.swift in Sources */,
+				2DE81D56F4484C8B802F0F46D8E9512E /* OpenMemoApp.swift in Sources */,
+				ACFD02015216B0906D6D8197760EA888 /* SettingsView.swift in Sources */,
+				885A6C8C1714E34C44B570F1A04D9E5A /* Task.swift in Sources */,
+				F4FCEEB6CA74E28E725F909E3393CA98 /* TaskDetailView.swift in Sources */,
+				5EFE11A19AA90AD66B8CDC7CF86D417F /* TaskListView.swift in Sources */,
+				62CAA70D95CF6E9EC22D31353DEFADC4 /* TaskListViewModel.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		06DE56E4103DC3F46A2559D9417F060F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		0AD01DCF13D8FF18D0E636854FBA4B68 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		504164CAA52437A02AF482931A5C7A64 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = W44ZFDH6DG;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OpenMemoApp/Info.plist;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.openmemo.app;
+				PRODUCT_MODULE_NAME = OpenMemoApp;
+				PRODUCT_NAME = OpenMemoApp;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		99A28BA3F669C879B01965E9CE847A7C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = W44ZFDH6DG;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OpenMemoApp/Info.plist;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.openmemo.app;
+				PRODUCT_MODULE_NAME = OpenMemoApp;
+				PRODUCT_NAME = OpenMemoApp;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		94AA69AED21AF8EE13D1E3512A188651 /* Build configuration list for PBXProject "OpenMemoApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				06DE56E4103DC3F46A2559D9417F060F /* Debug */,
+				0AD01DCF13D8FF18D0E636854FBA4B68 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		9B1B46A8D8A546AD3F8FFD299988B52B /* Build configuration list for PBXNativeTarget "OpenMemoApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				99A28BA3F669C879B01965E9CE847A7C /* Debug */,
+				504164CAA52437A02AF482931A5C7A64 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = "";
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A76D3CFEAC23F56E788A759AC7028FDA /* Project object */;
+}

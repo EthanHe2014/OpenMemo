@@ -1,0 +1,9 @@
+*.xcuserstate
+xcuserdata/
+DerivedData/
+build/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+build18/

@@ -114,7 +114,7 @@ iOS App（任务列表 / 提醒状态 / 本地通知） / Mac 扬声器
 | 调度 | APScheduler |
 | 消息入口 | iOS App（REST API） |
 | 语音输出 | Mac mini 扬声器（afplay） |
-| 手机端 | SwiftUI iOS App（OpenMemoApp 独立仓库） |
+| 手机端 | SwiftUI iOS App（`OpenMemoApp/` 子目录，同仓库） |
 
 ---
 
@@ -137,6 +137,13 @@ OpenMemo/
 │   ├── voice.py          # Edge TTS 生成语音 + Mac 扬声器播放
 │   └── config.py         # 配置读取（.env，纯环境变量，无硬编码密钥）
 ├── data/                 # SQLite 数据库 + 音频缓存（自动创建）
+├── OpenMemoApp/          # iOS + Mac 客户端（SwiftUI，同仓库）
+│   ├── OpenMemoApp.xcodeproj
+│   └── OpenMemoApp/
+│       ├── Views/        # 聊天 / 任务 / 设置界面
+│       ├── ViewModels/   # 任务轮询 + 提醒横幅逻辑
+│       ├── Networking/   # REST API 客户端
+│       └── Services/     # 本地通知
 ├── tests/
 │   └── test_tasks.py
 └── docs/
@@ -145,7 +152,7 @@ OpenMemo/
     └── SMART-AI-CHANGES.md    # AI 架构变更记录（内部开发）
 ```
 
-> 📱 **iOS App 在独立仓库**：`github.com/EthanHe2014/OpenMemoApp`（SwiftUI，零外部依赖，单独构建）。
+> 📱 **客户端就在本仓库**：`OpenMemoApp/` 子目录（SwiftUI，零外部依赖）。无需单独克隆。
 >
 > ⚠️ **iOS App 尚未上架 App Store**——需要一台 Mac 安装 Xcode，用源码构建到模拟器或真机运行。详见 [iOS 使用指南（Xcode）](docs/setup-ios-xcode.md)。
 
@@ -173,7 +180,7 @@ nohup ./start.sh > openmemo.log 2>&1 &
    ```bash
    cloudflared tunnel --url http://localhost:18890
    ```
-2. 打开 `OpenMemoApp` 仓库，把 `Networking/OpenMemoAPI.swift` 里的 `baseURL` 改成你的服务地址（隧道 URL 或局域网 IP，本地模拟器可用 `http://127.0.0.1:18890`）。
+2. 打开 `OpenMemoApp/`（本仓库子目录），在 App 的**设置页**里把服务器地址改成你的服务地址（隧道 URL 或局域网 IP；模拟器可用 `http://127.0.0.1:18890`）。
 3. 用 Xcode 构建运行到模拟器或真机（详见 [iOS 使用指南](docs/setup-ios-xcode.md)）。
 
 ⚠️ 快速隧道重启后 URL 会变，需要同步更新 App 的 `baseURL`。

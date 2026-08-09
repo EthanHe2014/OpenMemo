@@ -11,4 +11,3 @@ data/audio/*.mp3
 .venv/
 
 # iOS app is its own standalone repo
-OpenMemoApp/
