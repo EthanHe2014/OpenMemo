@@ -159,6 +159,9 @@ async def reminder_callback(task_id: int):
     except Exception as e:
         print(f"[提醒] 语音播报出错：{e}")
 
+    # 记录提醒原文，App 轮询 /api/reminders 显示
+    task_manager.add_reminder(task_id, content, speech)
+
     # 标记已提醒（App 通过轮询 reminder_sent 感知提醒）
     task_manager.mark_reminded(task_id)
     
@@ -477,11 +480,8 @@ async def _execute_news_job(task: dict):
     except Exception as e:
         print(f"[新闻] 语音播报出错：{e}")
 
-    # 语音播报
-    try:
-        await speak(news_summary, rate="+0%")
-    except Exception as e:
-        print(f"[新闻] 语音播报出错：{e}")
+    # 记录提醒原文，App 轮询 /api/reminders 显示
+    task_manager.add_reminder(task["task_id"], content, news_summary)
 
     # 循环任务：安排明天同一时间继续
     await _schedule_next_daily_task(task, daily_hour)
@@ -508,6 +508,8 @@ async def _execute_travel_reminder(task: dict):
         await speak(speech, rate="+5%")
     except Exception as e:
         print(f"[出行] 语音播报出错：{e}")
+    # 记录提醒原文，App 轮询 /api/reminders 显示
+    task_manager.add_reminder(task["task_id"], content, speech)
     task_manager.mark_reminded(task["task_id"])
 
 
@@ -527,6 +529,8 @@ async def _execute_schedule_reminder(task: dict):
                 await speak(remind_text, rate="+0%")
             except Exception as e:
                 print(f"[日程] 语音播报出错：{e}")
+            # 记录提醒原文，App 轮询 /api/reminders 显示
+            task_manager.add_reminder(task["task_id"], content, remind_text)
             task_manager.mark_reminded(task["task_id"])
             remind_hour = _parse_remind_hour(meta.get("remind_time"))
             await _schedule_next_daily_task(task, remind_hour)
@@ -573,6 +577,9 @@ async def _execute_schedule_reminder(task: dict):
         await speak(reminder_text, rate="+0%")
     except Exception as e:
         print(f"[日程] 语音播报出错：{e}")
+
+    # 记录提醒原文，App 轮询 /api/reminders 显示
+    task_manager.add_reminder(task["task_id"], content, reminder_text)
 
     # 安排明天继续
     remind_hour = _parse_remind_hour(meta.get("remind_time"))

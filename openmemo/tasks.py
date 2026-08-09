@@ -88,6 +88,18 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # Column already exists
 
+    # 提醒送达记录：每次提醒触发时，把 AI 生成的提醒原文存下来，App 轮询后显示
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS reminders (
+        reminder_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id INTEGER,
+        content TEXT,
+        message TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now', 'localtime'))
+    )
+    """)
+    conn.commit()
+
     conn.commit()
     conn.close()
     print(f"Database initialized at {DB_PATH}")
@@ -261,6 +273,32 @@ class TaskManager:
         cursor.execute(
             "SELECT * FROM tasks WHERE content LIKE ? AND status != 'cancelled' ORDER BY trigger_time ASC",
             (f"%{query}%",)
+        )
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    # ── 提醒送达记录（App 轮询显示 AI 提醒原文）──────────────
+    def add_reminder(self, task_id: int, content: str, message: str):
+        """记录一次已触发的提醒（AI 生成的原文）。"""
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO reminders (task_id, content, message) VALUES (?, ?, ?)",
+            (task_id, content, message),
+        )
+        conn.commit()
+        conn.close()
+
+    def list_reminders(self, after_id: int = 0, limit: int = 20) -> List[dict]:
+        """列出 reminder_id > after_id 的提醒记录（最新在前）。"""
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT reminder_id, task_id, content, message, created_at
+               FROM reminders WHERE reminder_id > ?
+               ORDER BY reminder_id DESC LIMIT ?""",
+            (after_id, limit),
         )
         rows = cursor.fetchall()
         conn.close()

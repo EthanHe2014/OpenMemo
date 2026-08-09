@@ -63,6 +63,13 @@ async def list_tasks(status: str = None, limit: int = 20):
     return {"tasks": tasks, "count": len(tasks)}
 
 
+@app.get("/api/reminders")
+async def list_reminders(after_id: int = 0, limit: int = 20):
+    """已触发的提醒记录（AI 生成的原文），App 轮询后显示横幅。"""
+    reminders = task_manager.list_reminders(after_id=after_id, limit=limit)
+    return {"reminders": reminders, "count": len(reminders)}
+
+
 @app.get("/api/tasks/{task_id}")
 async def get_task(task_id: int):
     """Get a specific task"""
