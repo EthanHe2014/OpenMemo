@@ -51,7 +51,7 @@ cd OpenMemo
    - **服务端口 / 语音音色** 等偏好
 5. **启动服务**（端口 `18890`，首次启动自动建好数据库 `data/openmemo.db`）
 
-看到 `Application startup complete` + `[调度器] 已启动` 即成功。
+看到 `Application startup complete` + `[调度器] 已启动` 即成功。**服务会打印一份「接下来这样用」的指引**——浏览器打开 `http://localhost:18890/` 的仪表盘就能立刻对话测试。
 
 **以后每次启动**：直接 `./start.sh` 即可，配置已保存，环境秒起，不再重复安装、不再重复询问。
 

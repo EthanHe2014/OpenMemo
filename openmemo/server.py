@@ -19,6 +19,20 @@ async def lifespan(app: FastAPI):
     """Start scheduler on startup, stop on shutdown"""
     print("🚀 OpenMemo starting up...")
     start_scheduler()
+    print()
+    print("=" * 56)
+    print("  ✅ OpenMemo 已启动！接下来这样用：")
+    print("=" * 56)
+    print(f"  1. 网页仪表盘（先在浏览器试一下）")
+    print(f"     http://localhost:{SERVER_PORT}/")  
+    print(f"  2. 直接对话（在仪表盘输入框里，或调用 API）")
+    print(f"     例：'明天下午3点开会'  '每天上午11点提醒我写作业'")
+    print(f"  3. 手机 App（真正的使用入口）")
+    print(f"     git clone https://github.com/EthanHe2014/OpenMemoApp")
+    print(f"     用 Xcode 跑起来，在 App 设置页把服务器地址改成你的地址")
+    print(f"  4. 提醒会通过：Mac 语音 + macOS 通知 + 手机本地通知 送达")
+    print("=" * 56)
+    print()
     yield
     print("👋 OpenMemo shutting down...")
     stop_scheduler()
@@ -31,6 +45,15 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan
 )
+
+
+@app.middleware("http")
+async def no_cache_api(request: Request, call_next):
+    """API 响应一律 no-store：App 轮询必须拿到最新数据，不能被 iOS URLCache 缓存。"""
+    response = await call_next(request)
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 task_manager = TaskManager()
 conv_manager = ConversationManager()
