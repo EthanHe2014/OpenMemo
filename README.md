@@ -122,44 +122,52 @@ AI_MODEL=你的模型名                          # 如 deepseek-chat / glm-5.2 
 
 ## 四、部署启动（Step by Step）
 
-### 步骤 1：准备环境
-
-需要：一台能联网的 Mac（负责跑服务 + 播报语音）、一个飞书开放平台应用、一个可用的 AI API Key。
+> 🚀 **一键启动**：只需一个命令，脚本会自动创建环境、装依赖、生成配置、启动服务——不用手动建库、不用手动装环境。
 
 ```bash
+git clone https://github.com/EthanHe2014/OpenMemo.git   # 或下载解压
 cd OpenMemo
-python3 -m venv .venv                # 创建虚拟环境
-source .venv/bin/activate            # 激活（或直接 .venv/bin/python）
-pip install -r requirements.txt      # 安装依赖
+./start.sh
 ```
 
-### 步骤 2：配置
+首次运行会自动：
+1. 创建虚拟环境 `.venv`（不存在才建）
+2. 安装全部依赖（`requirements.txt`）
+3. 从 `.env.example` 生成 `.env`（不存在才生成）
+4. 启动后端服务（端口 `18890`，自动建好数据库 `data/openmemo.db`）
+
+看到 `Application startup complete` + `[调度器] 已启动` 即成功。
+
+---
+
+### 只需一步：配置你的凭据
+
+先跑一次 `./start.sh` 生成 `.env`，然后编辑它填入真实凭据，再重启即可：
 
 ```bash
-cp .env.example .env
-# 编辑 .env，填入真实值
+nano .env   # 或 vim / 文本编辑器
 ```
 
 `.env` 里需要填：
-- `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL`：你自己选择的 AI 接口（任意 OpenAI 兼容服务，BaseURL + API Key + 模型名）。
-  - 想用默认的就留空 `AI_MODEL`（默认 `glm-5.2`），但一定要填 `AI_API_KEY`。
-  - 想用自己的：`AI_BASE_URL=https://你的服务/v1`、`AI_MODEL=你的模型名`、`AI_API_KEY=你的key`。
-- `TAVILY_API_KEY`：Tavily 搜索 Key（用于每日新闻）
-- `FEISHU_APP_ID` / `FEISHU_APP_SECRET` / `FEISHU_VERIFICATION_TOKEN` / `FEISHU_ENCRYPT_KEY`：飞书机器人凭据
-- `FEISHU_DEFAULT_USER`：接收提醒的用户 open_id（用于主动推送）
-- `SERVER_PORT`：默认 `18890`
+- `AI_API_KEY`：**必填**，你的 AI 接口 Key（见下方 [配置你自己的 AI](#配置你自己的-ai-base-url--api-key--模型)）。
+- `AI_BASE_URL` / `AI_MODEL`：可选，默认 `https://yuanyuaicloud.cn/v1` + `glm-5.2`；想用自己的服务就改。
+- `TAVILY_API_KEY`：可选，用于每日新闻（不填则新闻功能不可用）。
+- `FEISHU_APP_ID` / `FEISHU_APP_SECRET` / `FEISHU_VERIFICATION_TOKEN` / `FEISHU_ENCRYPT_KEY`：可选，飞书机器人凭据（不填则飞书不可用）。
+- `FEISHU_DEFAULT_USER`：接收提醒的用户 open_id（用于主动推送）。
+- `SERVER_PORT`：默认 `18890`。
 
-### 步骤 3：启动服务
+> 以后每次启动：只要 `./start.sh` 即可，环境已建好会秒起，不会重复安装。
+
+### 手动方式（不用一键脚本）
 
 ```bash
-./start.sh
-# 或手动：
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+cp .env.example .env          # 然后编辑 .env
 .venv/bin/python -u -m openmemo.server
 ```
 
-启动成功后日志会显示：`Application startup complete` + `[调度器] 已启动`。服务跑在 `http://0.0.0.0:18890`。
-
-### 步骤 4：打通消息渠道（飞书 / 钉钉 / 企业微信 / iOS）
+### 打通消息渠道（飞书 / 钉钉 / 企业微信 / iOS）
 
 OpenMemo 支持多种入口，选一个（可多选）：
 
@@ -184,7 +192,7 @@ https://xxx.trycloudflare.com/webhook/feishu
 
 > ⚠️ 快速隧道重启后 URL 会变，需要在对应平台后台更新订阅地址；iOS App 的 `baseURL` 也需要同步更新成最新隧道地址。
 
-### 步骤 5：在飞书里使用 / 手机用 App
+### 在飞书里使用 / 手机用 App
 
 - **飞书**：直接给机器人发中文消息即可，支持文字和语音。
 - **iOS App**：打开 `OpenMemoApp` 仓库，把 `Networking/OpenMemoAPI.swift` 里的 `baseURL` 改成最新隧道地址，用 Xcode 构建运行到模拟器或真机。
