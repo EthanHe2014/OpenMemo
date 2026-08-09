@@ -7,7 +7,6 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from .config import SERVER_HOST, SERVER_PORT
-from .feishu import feishu_bot
 from .conversation import process_message
 from .tasks import TaskManager, ConversationManager
 from .scheduler import start_scheduler, stop_scheduler
@@ -33,103 +32,8 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Deduplication: Track recently processed message IDs
-_processed_messages = set()
-_MAX_PROCESSED = 1000  # Keep last 1000 message IDs
-
-
 task_manager = TaskManager()
 conv_manager = ConversationManager()
-
-
-# ─── Feishu Webhook ─────────────────────────────────────────
-
-@app.post("/webhook/feishu")
-async def feishu_webhook(request: Request):
-    """Handle incoming Feishu bot events"""
-    body = await request.json()
-    
-    # Verify the event
-    if not feishu_bot.verify_event(body):
-        return JSONResponse({"error": "Verification failed"}, status_code=403)
-    
-    # Handle URL verification challenge
-    if body.get("type") == "url_verification":
-        return feishu_bot.handle_challenge(body)
-    
-    # Handle message event - Feishu v2.0 schema puts event_type in header
-    event = body.get("event", {})
-    event_type = event.get("type", "")
-    header = body.get("header", {})
-    header_event_type = header.get("event_type", "")
-    
-    # Check both locations for event type
-    matched_type = event_type or header_event_type
-    
-    if matched_type == "im.message.receive_v1":
-        # Extract message
-        msg_data = feishu_bot.extract_message(body)
-        text = msg_data["text"]
-        open_id = msg_data["open_id"]
-        message_id = msg_data.get("message_id", "")
-        is_bot = msg_data.get("is_bot", False)
-        
-        # CRITICAL: Skip messages from bots (including ourselves) to prevent infinite loops
-        if is_bot:
-            print(f"[Feishu] BOT MESSAGE SKIPPED")
-            return {"status": "ok"}
-        
-        # DEDUPLICATION: Skip if we already processed this message
-        if message_id:
-            if message_id in _processed_messages:
-                print(f"[Feishu] DUPLICATE SKIPPED: {message_id}")
-                return {"status": "ok"}
-            # Add to processed set BEFORE processing to prevent race conditions
-            _processed_messages.add(message_id)
-            # Keep it from growing too big
-            if len(_processed_messages) > _MAX_PROCESSED:
-                _processed_messages.pop()
-        
-        if not text:
-            return {"status": "ok"}
-        
-        # IMPORTANT: Return 200 immediately so Feishu doesn't retry!
-        # Process the message in background
-        asyncio.create_task(_handle_feishu_message(open_id, text, message_id))
-        
-        return {"status": "ok"}
-    
-    return {"status": "ok"}
-
-
-async def _handle_feishu_message(open_id: str, text: str, message_id: str):
-    """Process a Feishu message in the background and send reply."""
-    try:
-        print(f"[Feishu] Message from {open_id}: {text}")
-        
-        # Process the message with a timeout so Feishu always gets a reply
-        try:
-            reply = await asyncio.wait_for(
-                process_message(open_id, text, speak_response=False),
-                timeout=25.0  # Max 25s for the whole AI pipeline
-            )
-        except asyncio.TimeoutError:
-            print(f"[Feishu] AI processing timed out for {open_id}")
-            reply = "AI 服务正在忙，请稍后再试或换个问题问我 🙏"
-        
-        # Send reply back via Feishu
-        success = await feishu_bot.send_message(open_id, reply)
-        if success:
-            print(f"[Feishu] Reply sent to {open_id}: {reply[:50]}...")
-        else:
-            print(f"[Feishu] Failed to send reply to {open_id}")
-    except Exception as e:
-        print(f"[Feishu] Error handling message: {e}")
-        # Last resort: try to notify the user
-        try:
-            await feishu_bot.send_message(open_id, "出错了，请稍后再试 🙏")
-        except:
-            pass
 
 
 # ─── REST API ───────────────────────────────────────────────
@@ -213,7 +117,7 @@ async def delete_task(task_id: int):
 
 @app.post("/api/chat")
 async def chat(request: Request):
-    """Chat with OpenMemo (for testing without Feishu)"""
+    """Chat with OpenMemo（App 聊天入口）"""
     body = await request.json()
     message = body.get("message", "")
     session_id = body.get("session_id", "api_user")

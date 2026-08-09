@@ -60,7 +60,7 @@ if [ ! -f .env ]; then
     if [ -f .env.example ]; then
         say "未找到 .env, 已从 .env.example 生成模板"
         cp .env.example .env
-        warn "请编辑 .env, 填入你的 AI_API_KEY (以及飞书/其他渠道凭据)"
+        warn "请编辑 .env, 填入你的 AI_API_KEY"
     else
         warn "缺少 .env.example, 跳过配置生成 (服务可能无法连接 AI)"
     fi

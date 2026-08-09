@@ -16,12 +16,7 @@ AI_MODEL = os.getenv("AI_MODEL", "glm-5.2")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "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")
 TAVILY_BASE_URL = os.getenv("TAVILY_BASE_URL", "https://api.tavily.com")
 
-# Feishu Configuration
-FEISHU_APP_ID = os.getenv("FEISHU_APP_ID", "")
-FEISHU_APP_SECRET = os.getenv("FEISHU_APP_SECRET", "")
-FEISHU_VERIFICATION_TOKEN = os.getenv("FEISHU_VERIFICATION_TOKEN", "")
-FEISHU_ENCRYPT_KEY = os.getenv("FEISHU_ENCRYPT_KEY", "")
-FEISHU_DEFAULT_USER = os.getenv("FEISHU_DEFAULT_USER", "")  # Default user open_id for reminders
+# (钉钉 / 企业微信 / 飞书 等渠道已移除，纯 App 使用)
 
 # Server Configuration
 SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")

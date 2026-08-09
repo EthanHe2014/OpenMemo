@@ -4,6 +4,8 @@ AI 驱动的个人语音助手 —— 会对话、会记任务、会在你需要
 
 OpenMemo 的核心是一个**可配置的大模型对话 AI**（默认 `glm-5.2`，你也可以换成任何 OpenAI 兼容接口，见下文 [配置你自己的 AI](#配置你自己的-ai-base-url--api-key--模型)）。它的特别之处在于：**AI 负责所有"思考"和"说话"**，服务端只有一个轻量程序，负责把 AI 的结构化输出解析出来、存任务、按时间把 AI 写的提醒念出来。
 
+> 📱 **使用方式**：本项目通过 **iOS App** 使用（Web 仪表盘 `/` 辅助查看）。无飞书 / 钉钉 / 企业微信 等 IM 通道——纯自家 App。
+
 ---
 
 ## 一、它能做什么
@@ -14,7 +16,7 @@ OpenMemo 的核心是一个**可配置的大模型对话 AI**（默认 `glm-5.2`
 - 📰 **每日新闻**：你说"每天给我看新闻"，它每天到点搜索当天新鲜新闻播给你。
 - 📅 **带日程的重复任务**：暑假作业按天分配，每天提醒当天具体内容。
 - 🔈 **语音播报**：Mac mini 扬声器用中文读出提醒（Edge TTS）。
-- 📱 **iOS App**：手机上看任务、对话、管理会话（DeepSeek 风格侧边栏）。> ⚠️ 尚未上架 App Store，需 Mac + Xcode 源码构建（见 [iOS 使用指南](docs/setup-ios-xcode.md)）。
+- 📱 **iOS App**：手机上看任务、对话、管理会话（侧边栏）。> ⚠️ 尚未上架 App Store，需 Mac + Xcode 源码构建（见 [iOS 使用指南](docs/setup-ios-xcode.md)）。
 
 ### 智能任务类型
 
@@ -32,8 +34,8 @@ OpenMemo 的核心是一个**可配置的大模型对话 AI**（默认 `glm-5.2`
 **AI 自主架构**（2026-08 新版）：
 
 ```
-用户（飞书 / iOS App）
-   │  发送消息
+iOS App
+   │  发送消息（/api/chat）
    ▼
 OpenMemo 服务端（FastAPI）
    │  【唯一行为逻辑：把消息交给 AI，解析 AI 返回的 JSON】
@@ -42,7 +44,7 @@ OpenMemo 服务端（FastAPI）
    │  3. 服务端 ①原样回复 AI 的话 ②把任务/提醒存进 SQLite 并按时间调度
    │  4. 到点 → 把 AI 写的 reminder_text 用 Edge TTS 生成语音 → Mac 扬声器播报
    ▼
-飞书机器人 / iOS App / Mac 扬声器
+iOS App（任务列表 / 提醒状态） / Mac 扬声器
 ```
 
 - **AI 全权负责对话**：问什么、怎么问、是否放弃追问、写什么样的话，全部由 AI 自己决定。
@@ -56,11 +58,10 @@ OpenMemo 服务端（FastAPI）
 | 服务端 | Python 3.14 + FastAPI |
 | AI | 可配置大模型（默认 glm-5.2，任意 OpenAI 兼容接口） |
 | 实时新闻 | Tavily 搜索 API |
-| STT（语音转文字） | 飞书内置 |
 | TTS（文字转语音） | Edge TTS（zh-CN-XiaoxiaoNeural） |
 | 存储 | SQLite |
 | 调度 | APScheduler |
-| 消息入口 | 飞书机器人 Webhook / iOS App |
+| 消息入口 | iOS App（REST API） |
 | 语音输出 | Mac mini 扬声器（afplay） |
 | 手机端 | SwiftUI iOS App（OpenMemoApp 独立仓库） |
 
@@ -76,12 +77,11 @@ OpenMemo/
 ├── .env.example          # 配置模板（复制为 .env 填真实值）
 ├── openmemo/
 │   ├── __init__.py
-│   ├── server.py         # FastAPI 服务 + 飞书 Webhook + 全部 API
+│   ├── server.py         # FastAPI 服务 + 全部 REST API
 │   ├── ai.py             # glm-5.2 接入 + SYSTEM_PROMPT（AI 的"人设"）
 │   ├── conversation.py   # 核心：把消息交给 AI，解析 JSON，原样回复
 │   ├── scheduler.py      # APScheduler 提醒调度 + 按任务类型执行
-│   ├── tasks.py          # 任务/会话/槽位 的 SQLite 存取
-│   ├── feishu.py         # 飞书机器人接入（发消息给用户）
+│   ├── tasks.py          # 任务/会话 的 SQLite 存取
 │   ├── voice.py          # Edge TTS 生成语音 + Mac 扬声器播放
 │   └── config.py         # 配置读取（.env）
 ├── data/                 # SQLite 数据库 + 音频缓存（自动创建）
@@ -89,10 +89,8 @@ OpenMemo/
 │   └── test_tasks.py
 └── docs/
     ├── mvp-flow.md            # MVP 流程说明
-    ├── setup-feishu.md        # 飞书接入指南
     ├── setup-ios-xcode.md     # iOS App（Xcode）使用指南
-    ├── setup-dingtalk.md      # 钉钉接入指南
-    └── setup-wecom.md         # 企业微信接入指南
+    └── SMART-AI-CHANGES.md    # AI 架构变更记录（内部开发）
 ```
 
 > 📱 **iOS App 在独立仓库**：`github.com/EthanHe2014/OpenMemoApp`（SwiftUI，零外部依赖，单独构建）。
@@ -152,8 +150,6 @@ nano .env   # 或 vim / 文本编辑器
 - `AI_API_KEY`：**必填**，你的 AI 接口 Key（见下方 [配置你自己的 AI](#配置你自己的-ai-base-url--api-key--模型)）。
 - `AI_BASE_URL` / `AI_MODEL`：可选，默认 `https://yuanyuaicloud.cn/v1` + `glm-5.2`；想用自己的服务就改。
 - `TAVILY_API_KEY`：可选，用于每日新闻（不填则新闻功能不可用）。
-- `FEISHU_APP_ID` / `FEISHU_APP_SECRET` / `FEISHU_VERIFICATION_TOKEN` / `FEISHU_ENCRYPT_KEY`：可选，飞书机器人凭据（不填则飞书不可用）。
-- `FEISHU_DEFAULT_USER`：接收提醒的用户 open_id（用于主动推送）。
 - `SERVER_PORT`：默认 `18890`。
 
 > 以后每次启动：只要 `./start.sh` 即可，环境已建好会秒起，不会重复安装。
@@ -167,43 +163,28 @@ cp .env.example .env          # 然后编辑 .env
 .venv/bin/python -u -m openmemo.server
 ```
 
-### 打通消息渠道（飞书 / 钉钉 / 企业微信 / iOS）
+### 手机用 App（iOS）
 
-OpenMemo 支持多种入口，选一个（可多选）：
+后端跑起来后，iOS App 通过 REST API 连接你的服务：
 
-| 渠道 | 难度 | 说明 | 指南 |
-|------|------|------|------|
-| **飞书** | ⭐ 最易（内置支持） | 开箱即用，文字+语音，支持主动推送 | [飞书接入指南](docs/setup-feishu.md) |
-| **iOS App** | ⭐⭐ 需 Xcode | 手机 App，但未上架 App Store，需 Mac + Xcode 构建 | [iOS 使用指南](docs/setup-ios-xcode.md) |
-| **钉钉** | ⭐⭐⭐ 需加适配模块 | 企业内部应用机器人，需新增 dingtalk.py | [钉钉接入指南](docs/setup-dingtalk.md) |
-| **企业微信** | ⭐⭐⭐ 需加适配模块 | 自建应用，XML+AES 回调，需新增 wecom.py | [企业微信接入指南](docs/setup-wecom.md) |
+1. 若想手机在公网访问后端，用隧道暴露本机端口（本地模拟器则无需）：
+   ```bash
+   cloudflared tunnel --url http://localhost:18890
+   ```
+2. 打开 `OpenMemoApp` 仓库，把 `Networking/OpenMemoAPI.swift` 里的 `baseURL` 改成你的服务地址（隧道 URL 或局域网 IP，本地模拟器可用 `http://127.0.0.1:18890`）。
+3. 用 Xcode 构建运行到模拟器或真机（详见 [iOS 使用指南](docs/setup-ios-xcode.md)）。
 
-以飞书为例（最快）：
-
-```bash
-cloudflared tunnel --url http://localhost:18890
-```
-
-把输出的 `https://xxx.trycloudflare.com` 填到飞书开放平台的**事件订阅地址**：
-
-```
-https://xxx.trycloudflare.com/webhook/feishu
-```
-
-> ⚠️ 快速隧道重启后 URL 会变，需要在对应平台后台更新订阅地址；iOS App 的 `baseURL` 也需要同步更新成最新隧道地址。
-
-### 在飞书里使用 / 手机用 App
-
-- **飞书**：直接给机器人发中文消息即可，支持文字和语音。
-- **iOS App**：打开 `OpenMemoApp` 仓库，把 `Networking/OpenMemoAPI.swift` 里的 `baseURL` 改成最新隧道地址，用 Xcode 构建运行到模拟器或真机。
+⚠️ 快速隧道重启后 URL 会变，需要同步更新 App 的 `baseURL`。
 
 ---
 
 ## 五、使用指南（Step by Step）
 
+iOS App 就是你与 OpenMemo 对话的入口。
+
 ### 🗣️ 先跟它打个招呼
 
-在飞书或 App 里发：
+在 App 对话框里发：
 ```
 你好
 ```
@@ -275,8 +256,7 @@ https://xxx.trycloudflare.com/webhook/feishu
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/webhook/feishu` | 飞书机器人 Webhook |
-| GET | `/` | Web 仪表盘 |
+| GET | `/` | Web 仪表盘（辅助查看） |
 | GET | `/api/health` | 健康检查 |
 | GET | `/api/tasks` | 任务列表 |
 | GET | `/api/tasks/{id}` | 获取单个任务 |
@@ -309,7 +289,6 @@ https://xxx.trycloudflare.com/webhook/feishu
 ### 会话相关
 - **conversations**：每条消息（role / content / intent）
 - **sessions**：会话列表（标题 = 第一条用户消息）
-- **pending_slots**：多轮追问状态（已弃用，改为 AI 自主处理）
 
 ---
 
@@ -321,11 +300,8 @@ https://xxx.trycloudflare.com/webhook/feishu
 **Q：AI 不创建任务怎么办？**
 新版已内置"承诺就必须落地"规则：AI 一旦向你确认提醒时间，同一轮就必须返回创建任务的动作，服务端才会真正调度。若仍遇到"说了但不建"的情况，检查服务日志是否有 `[调度器] 已安排任务 X`。
 
-**Q：飞书收不到提醒？**
-确认 `FEISHU_DEFAULT_USER` 填了接收者的 open_id，且服务日志里 `[推送]` 成功。
-
 **Q：App 连不上？**
-基本是隧道 URL 变了。把 `OpenMemoAPI.swift` 的 `baseURL` 和飞书事件订阅地址都更新成最新隧道地址。
+基本是隧道 URL 变了。把 `OpenMemoAPI.swift` 的 `baseURL` 更新成最新隧道地址（局域网或模拟器直连请用对应 IP）。
 
 **Q：Mac 没声音？**
 检查系统输出设备是不是 Mac 自带扬声器（ToDesk 等远程工具会挂虚拟声卡抢占输出）。

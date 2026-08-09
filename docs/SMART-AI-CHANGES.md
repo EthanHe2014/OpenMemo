@@ -100,7 +100,7 @@ if result["intent"] == "NEWS_JOB":
     # → 创建循环 cron 任务（通过 OpenClaw 或内置调度器）
     # → 存储 topic + time
     # → 每次触发时调用 web_search / webfetch 获取当日新闻
-    # → 用 TTS 朗读 或 飞书推送
+    # → 用 TTS 朗读 并推送消息到 App
 
 elif result["intent"] == "TRAVEL_EVENT":
     # → 反算提醒时间
@@ -179,7 +179,7 @@ elif result["intent"] == "SCHEDULE":
 - 当前 OpenMemo 运行在 Ethan 的 Mac mini 上，通过 cloudflared tunel 对外暴露
 - 没有外网持久化存储，重启后内存状态丢失（cron 等）
 - NEWS_JOB 的 web_search 能力需要集成一个搜索 API（webfetch 或 tavily 或 serpapi）
-- 飞书推送已打通，可以直接用现有 `feishu_bot.send_message()`
+- 无 IM 推送通道（App 纯 REST，提醒通过任务状态 + Mac 扬声器播报）
 - TTS 已打通，用 `edge-tts` + `afplay`
 - OpenMemo 后端是 Python，无外部依赖（除了 httpx）
 
@@ -212,7 +212,7 @@ elif result["intent"] == "SCHEDULE":
 
 ### Phase 3 — 执行层（✅ 完成）
 - `scheduler.py` `reminder_callback` 按 `task_type` 分流：
-  - **news**：触发时 `_execute_news_job` 生成当日新闻摘要 + 语音 + 飞书推送
+  - **news**：触发时 `_execute_news_job` 生成当日新闻摘要 + 语音播报
   - **travel**：触发时 `_execute_travel_reminder` 提醒出发（带路程/提前量上下文）
   - **schedule**：触发时 `_execute_schedule_reminder` 读取当天日程提醒
 - 每日智能任务自调度次日（`_schedule_next_daily_task`），重启后 `load_existing_tasks` 重装备

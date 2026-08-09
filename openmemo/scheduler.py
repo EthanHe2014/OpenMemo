@@ -7,16 +7,11 @@ from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.cron import CronTrigger
 from .tasks import TaskManager
 from .voice import speak
-from .feishu import feishu_bot
 from .ai import call_ai
 
 
 scheduler = AsyncIOScheduler()
 task_manager = TaskManager()
-
-# Default Feishu user（单用户模式）
-from .config import FEISHU_DEFAULT_USER
-DEFAULT_FEISHU_USER = FEISHU_DEFAULT_USER or "ou_ec77a32e32b880f53607efa4944cfb24"
 
 # AI prompt for generating natural, varied reminder messages
 REMINDER_PROMPT = """你是OpenMemo的提醒功能。现在有一个任务到了提醒时间，你需要生成一段提醒消息。
@@ -49,13 +44,11 @@ REMINDER_PROMPT = """你是OpenMemo的提醒功能。现在有一个任务到了
    - 如果今天任务多，可以说「还有X件事，XX先做吧」
    - 如果今天很清闲，可以说「今天就这一件事，轻松搞定」
 5. 语音版要口语化、自然，像朋友在跟你说话（2-3句话）
-6. 飞书版简洁带emoji（1-2句话）
-7. 可以偶尔加一些小幽默、小鼓励、或者跟任务相关的小建议
+6. 可以偶尔加一些小幽默、小鼓励、或者跟任务相关的小建议
 
 返回JSON格式：
 {
-  "speech": "语音播报文本（口语化，自然，2-3句）",
-  "feishu": "飞书消息文本（带emoji，简洁，1-2句）"
+  "speech": "语音播报文本（口语化，自然，2-3句）"
 }
 
 只返回JSON，不要其他内容。"""
@@ -108,28 +101,28 @@ async def _generate_reminder_message(content: str, priority: str) -> dict:
         # AI失败时用备用模板（随机选，不重复）
         import random
         fallbacks = [
-            {"speech": f"嘿，{content}的时间到啦，快去行动吧！", "feishu": f"⏰ {content}的时间到了～"},
-            {"speech": f"提醒你一下，{content}该做啦，加油！", "feishu": f"💡 别忘了：{content}"},
-            {"speech": f"时间不早啦，{content}该安排上了！", "feishu": f"🔔 该做{content}啦"},
-            {"speech": f"叮咚！{content}来敲门了，快去迎接吧！", "feishu": f"🎯 {content}，该行动了！"},
-            {"speech": f"别偷懒啦，{content}等着你呢！", "feishu": f"⚡ {content}，冲！"},
+            f"嘿，{content}的时间到啦，快去行动吧！",
+            f"提醒你一下，{content}该做啦，加油！",
+            f"时间不早啦，{content}该安排上了！",
+            f"叮咚！{content}来敲门了，快去迎接吧！",
+            f"别偷懒啦，{content}等着你呢！",
         ]
-        return random.choice(fallbacks)
+        return {"speech": random.choice(fallbacks)}
     
     # 解析AI返回的JSON
     from .ai import _extract_json
     parsed = _extract_json(result["content"])
     
-    if parsed and "speech" in parsed and "feishu" in parsed:
+    if parsed and "speech" in parsed:
         return parsed
     
     # JSON解析失败，用AI原始文本
     text = result["content"].strip()
-    return {"speech": text, "feishu": f"⏰ {content}"}
+    return {"speech": text}
 
 
 async def reminder_callback(task_id: int):
-    """提醒触发时调用——AI生成消息 + 本地语音播报 + 飞书消息推送"""
+    """提醒触发时调用——AI生成消息 + 本地语音播报（App 轮询 reminder_sent 感知提醒）"""
     task = task_manager.get_task(task_id)
     if not task or task["status"] != "pending":
         return
@@ -153,78 +146,24 @@ async def reminder_callback(task_id: int):
     try:
         messages = await _generate_reminder_message(content, priority)
         speech = messages["speech"]
-        feishu_msg = messages["feishu"]
     except Exception as e:
         print(f"[提醒] AI生成消息失败，使用备用：{e}")
         speech = f"嘿，{content}的时间到啦，快去行动吧！"
-        feishu_msg = f"⏰ {content}的时间到了～"
     
     print(f"[提醒] 语音：{speech}")
-    print(f"[提醒] 飞书：{feishu_msg}")
 
-    # 1. 本地语音播报（Mac mini 扬声器）
+    # 本地语音播报（Mac mini 扬声器）
     try:
         await speak(speech, rate="+0%")
     except Exception as e:
         print(f"[提醒] 语音播报出错：{e}")
 
-    # 2. 飞书消息推送
-    try:
-        user_open_id = _get_user_open_id(task_id)
-        if user_open_id:
-            success = await feishu_bot.send_message(user_open_id, feishu_msg)
-            if success:
-                print(f"[提醒] 飞书消息已发送给 {user_open_id}")
-            else:
-                print(f"[提醒] 飞书消息发送失败")
-        else:
-            print(f"[提醒] 未找到用户open_id，跳过飞书通知")
-    except Exception as e:
-        print(f"[提醒] 飞书推送出错：{e}")
-    
-    # 标记已提醒
+    # 标记已提醒（App 通过轮询 reminder_sent 感知提醒）
     task_manager.mark_reminded(task_id)
     
     # 循环任务：安排下一次
     if task["is_recurring"]:
         schedule_recurring(task_id, task["is_recurring"], task["content"], task["priority"])
-
-
-def _get_user_open_id(task_id: int) -> str:
-    """从对话历史中找到用户的open_id"""
-    import sqlite3
-    from .config import DB_PATH
-    
-    try:
-        conn = sqlite3.connect(str(DB_PATH))
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT session_id FROM conversations 
-            WHERE intent = 'TASK_CREATED' AND slots LIKE ?
-            ORDER BY conv_id DESC LIMIT 1
-        """, (f'%task_id":{task_id}%',))
-        
-        row = cursor.fetchone()
-        if row and row["session_id"] != "default_user":
-            conn.close()
-            return row["session_id"]
-        
-        cursor.execute("""
-            SELECT DISTINCT session_id FROM conversations 
-            WHERE session_id != 'default_user' AND session_id LIKE 'ou_%'
-            ORDER BY conv_id DESC LIMIT 1
-        """)
-        row = cursor.fetchone()
-        conn.close()
-        
-        if row:
-            return row["session_id"]
-    except Exception as e:
-        print(f"[提醒] 查找用户出错：{e}")
-    
-    return DEFAULT_FEISHU_USER
 
 
 def schedule_recurring(task_id: int, recurring: str, content: str, priority: str):
@@ -359,8 +298,7 @@ SCHEDULE_REMIND_PROMPT = """你是OpenMemo，现在需要提醒用户今天该�
 1. 用鼓励的语气提醒
 2. 如果有多项，鼓励用户按顺序完成
 3. 2-3句语音版本，自然口语化
-4. 飞书版本简洁带emoji
-5. 直接输出提醒内容，不要JSON格式。"""
+4. 直接输出提醒内容，不要JSON格式。"""
 
 
 async def _fetch_news(topic: str, max_retries: int = 1) -> str:
@@ -456,16 +394,11 @@ async def _execute_news_job(task: dict):
     except Exception as e:
         print(f"[新闻] 语音播报出错：{e}")
 
-    # 飞书推送
+    # 语音播报
     try:
-        user_open_id = _get_user_open_id(task["task_id"])
-        feishu_msg = f"📰 每日{topic}新闻\n\n{news_summary[:500]}"
-        if user_open_id:
-            await feishu_bot.send_message(user_open_id, feishu_msg)
-        else:
-            print("[新闻] 未找到用户open_id，跳过飞书通知")
+        await speak(news_summary, rate="+0%")
     except Exception as e:
-        print(f"[新闻] 飞书推送出错：{e}")
+        print(f"[新闻] 语音播报出错：{e}")
 
     # 循环任务：安排明天同一时间继续
     await _schedule_next_daily_task(task, daily_hour)
@@ -479,14 +412,12 @@ async def _execute_travel_reminder(task: dict):
     remind_text = meta.get("reminder_text")
     if remind_text:
         speech = remind_text
-        feishu_msg = remind_text
     else:
         event_time = meta.get("event_time", "未知时间")
         commute_minutes = meta.get("commute_minutes", 60)
         flight_type = meta.get("flight_type", "domestic")
         ftype_desc = "国内" if flight_type == "domestic" else "国际"
         speech = f"叮咚！该出发了！你的{ftype_desc}出行{content}，{event_time}的时间，路上要{commute_minutes}分钟，现在出发刚刚好，别迟到哦！"
-        feishu_msg = f"✈️ 该出发了！\n{content}\n⏰ {event_time}\n🚗 {commute_minutes}分钟路程\n建议提前{3 if flight_type == 'international' else 2}小时到机场/车站"
 
     print(f"[出行] 提醒出发：{content}")
 
@@ -494,15 +425,6 @@ async def _execute_travel_reminder(task: dict):
         await speak(speech, rate="+5%")
     except Exception as e:
         print(f"[出行] 语音播报出错：{e}")
-
-    try:
-        user_open_id = _get_user_open_id(task["task_id"])
-        if user_open_id:
-            await feishu_bot.send_message(user_open_id, feishu_msg)
-        else:
-            print("[出行] 未找到用户open_id，跳过飞书通知")
-    except Exception as e:
-        print(f"[出行] 飞书推送出错：{e}")
     task_manager.mark_reminded(task["task_id"])
 
 
@@ -522,13 +444,6 @@ async def _execute_schedule_reminder(task: dict):
                 await speak(remind_text, rate="+0%")
             except Exception as e:
                 print(f"[日程] 语音播报出错：{e}")
-            try:
-                user_open_id = _get_user_open_id(task["task_id"])
-                feishu_msg = f"📅 {content}提醒\n{remind_text[:500]}"
-                if user_open_id:
-                    await feishu_bot.send_message(user_open_id, feishu_msg)
-            except Exception as e:
-                print(f"[日程] 飞书推送出错：{e}")
             task_manager.mark_reminded(task["task_id"])
             remind_hour = _parse_remind_hour(meta.get("remind_time"))
             await _schedule_next_daily_task(task, remind_hour)
@@ -574,14 +489,6 @@ async def _execute_schedule_reminder(task: dict):
         await speak(reminder_text, rate="+0%")
     except Exception as e:
         print(f"[日程] 语音播报出错：{e}")
-    # 飞书
-    try:
-        user_open_id = _get_user_open_id(task["task_id"])
-        feishu_msg = f"📅 {content}提醒\n今日任务：\n{tasks_str}"
-        if user_open_id:
-            await feishu_bot.send_message(user_open_id, feishu_msg)
-    except Exception as e:
-        print(f"[日程] 飞书推送出错：{e}")
 
     # 安排明天继续
     remind_hour = _parse_remind_hour(meta.get("remind_time"))

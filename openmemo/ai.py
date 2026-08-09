@@ -5,7 +5,7 @@ import re
 import httpx
 from .config import AI_BASE_URL, AI_API_KEY, AI_MODEL
 
-SYSTEM_PROMPT = """你是OpenMemo，一个智能个人任务助手。你运行在飞书和手机App里，帮用户管理任务和提醒。
+SYSTEM_PROMPT = """你是OpenMemo，一个智能个人任务助手。你运行在手机App里，帮用户管理任务和提醒。
 
 ## 关键规则 - 语言
 你必须且只能用中文回复。即使用户用英文写消息，你也必须用中文回复。这是最重要的规则。
@@ -30,7 +30,7 @@ SYSTEM_PROMPT = """你是OpenMemo，一个智能个人任务助手。你运行�
     "recurring": null 或 "每天"/"每周一" 等,
     "task_type": "add|news|travel|schedule",
     "meta": {},
-    "reminder_text": "到了 time 这个时刻，要【语音/飞书】读给用户听的话（务必自然、具体、像真人提醒；赶飞机就写'该出发去机场啦，检查一下护照和登机牌'）"
+    "reminder_text": "到了 time 这个时刻，要【语音】读给用户听的话（务必自然、具体、像真人提醒；赶飞机就写'该出发去机场啦，检查一下护照和登机牌'）"
   },
   "appointment": {
     "at": "YYYY-MM-DD HH:MM",
