@@ -94,7 +94,8 @@ async def _generate_reminder_message(content: str, priority: str) -> dict:
     result = await call_ai(
         [{"role": "user", "content": user_msg}],
         system_prompt=REMINDER_PROMPT,
-        temperature=0.85  # 更高温度 = 更有创意
+        temperature=0.85,  # 更高温度 = 更有创意
+        json_mode=False  # 提醒文案是纯文本，不是 JSON
     )
     
     if result["error"] or not result["content"]:
@@ -169,25 +170,36 @@ async def reminder_callback(task_id: int):
 def schedule_recurring(task_id: int, recurring: str, content: str, priority: str):
     """安排循环任务的下一次"""
     recurring_lower = recurring.lower() if recurring else ""
-    
+
+    # 用任务自己的触发时间决定每天几点（不再写死 9:00）
+    hour, minute = 9, 0
+    try:
+        task = task_manager.get_task(task_id)
+        tt = (task or {}).get("trigger_time") or ""
+        if len(tt) >= 16:
+            hour = int(tt[11:13])
+            minute = int(tt[14:16])
+    except (ValueError, TypeError, IndexError):
+        pass
+
     if recurring_lower in ("每天", "daily"):
-        trigger = CronTrigger(hour=9, minute=0)
+        trigger = CronTrigger(hour=hour, minute=minute)
     elif recurring_lower in ("每周一", "every monday"):
-        trigger = CronTrigger(day_of_week='mon', hour=9, minute=0)
+        trigger = CronTrigger(day_of_week='mon', hour=hour, minute=minute)
     elif recurring_lower in ("每周二", "every tuesday"):
-        trigger = CronTrigger(day_of_week='tue', hour=9, minute=0)
+        trigger = CronTrigger(day_of_week='tue', hour=hour, minute=minute)
     elif recurring_lower in ("每周三", "every wednesday"):
-        trigger = CronTrigger(day_of_week='wed', hour=9, minute=0)
+        trigger = CronTrigger(day_of_week='wed', hour=hour, minute=minute)
     elif recurring_lower in ("每周四", "every thursday"):
-        trigger = CronTrigger(day_of_week='thu', hour=9, minute=0)
+        trigger = CronTrigger(day_of_week='thu', hour=hour, minute=minute)
     elif recurring_lower in ("每周五", "every friday"):
-        trigger = CronTrigger(day_of_week='fri', hour=9, minute=0)
+        trigger = CronTrigger(day_of_week='fri', hour=hour, minute=minute)
     elif recurring_lower in ("每周六", "every saturday"):
-        trigger = CronTrigger(day_of_week='sat', hour=9, minute=0)
+        trigger = CronTrigger(day_of_week='sat', hour=hour, minute=minute)
     elif recurring_lower in ("每周日", "every sunday"):
-        trigger = CronTrigger(day_of_week='sun', hour=9, minute=0)
+        trigger = CronTrigger(day_of_week='sun', hour=hour, minute=minute)
     elif "工作日" in recurring_lower or "weekday" in recurring_lower:
-        trigger = CronTrigger(day_of_week='mon-fri', hour=9, minute=0)
+        trigger = CronTrigger(day_of_week='mon-fri', hour=hour, minute=minute)
     else:
         print(f"[调度器] 未知循环模式：{recurring}")
         return
@@ -451,7 +463,8 @@ async def _execute_news_job(task: dict):
     result = await call_ai(
         [{"role": "user", "content": user_msg}],
         system_prompt=prompt,
-        temperature=0.7
+        temperature=0.7,
+        json_mode=False  # 新闻摘要纯文本
     )
 
     news_summary = result["content"] if not result["error"] and result["content"] else (
@@ -547,7 +560,8 @@ async def _execute_schedule_reminder(task: dict):
     result = await call_ai(
         [{"role": "user", "content": f"今天是{today_str}，提醒我完成今日任务。"}],
         system_prompt=prompt,
-        temperature=0.8
+        temperature=0.8,
+        json_mode=False  # 日程提醒纯文本
     )
 
     reminder_text = result["content"] if not result["error"] and result["content"] else (

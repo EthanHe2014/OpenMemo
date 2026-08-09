@@ -41,12 +41,15 @@ async def speak_safe(text: str):
 
 def _parse_ai_datetime(value) -> str | None:
     """Normalize the AI's 'time'/'at' field into 'YYYY-MM-DD HH:MM'.
-    Accepts 'YYYY-MM-DD HH:MM' or full ISO. Returns None if unparseable.
+    Accepts absolute formats, ISO, and partial formats (HH:MM / MM-DD HH:MM).
+    Returns None if unparseable.
     """
     if not value:
         return None
     s = str(value).strip()
-    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S"):
+    now = datetime.now()
+    # 绝对格式
+    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M"):
         try:
             return datetime.strptime(s, fmt).strftime("%Y-%m-%d %H:%M")
         except ValueError:
@@ -54,6 +57,21 @@ def _parse_ai_datetime(value) -> str | None:
     # ISO-8601 with T
     try:
         dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return dt.strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        pass
+    # MM-DD HH:MM（默认今年）
+    for fmt in ("%m-%d %H:%M", "%m/%d %H:%M"):
+        try:
+            dt = datetime.strptime(s, fmt).replace(year=now.year)
+            return dt.strftime("%Y-%m-%d %H:%M")
+        except ValueError:
+            continue
+    # 只有 HH:MM（模型偶尔偷懒不给日期）：今天，若已过则明天
+    try:
+        dt = datetime.strptime(s, "%H:%M").replace(year=now.year, month=now.month, day=now.day)
+        if dt <= now + timedelta(minutes=5):
+            dt += timedelta(days=1)
         return dt.strftime("%Y-%m-%d %H:%M")
     except ValueError:
         return None
@@ -149,20 +167,39 @@ async def _apply_ai_action(result: dict, session_id: str):
     action = result.get("action") or "chat"
 
     if action == "task_added":
+        created = 0
         # Single task
         if result.get("task"):
-            _create_task_from_ai_task(result.get("task"), session_id)
+            created += 1 if _create_task_from_ai_task(result.get("task"), session_id) else 0
         # Multiple tasks (AI 一次建多个提醒)
         multi = result.get("tasks")
         if isinstance(multi, list):
             for one in multi:
-                _create_task_from_ai_task(one, session_id)
-        if not result.get("task") and not multi:
-            print("[conversation] task_added but AI gave no valid task.content")
+                created += 1 if _create_task_from_ai_task(one, session_id) else 0
+        # 安全网：模型偶尔把任务放在 appointment 里却标成 task_added
+        if created == 0 and result.get("appointment"):
+            await _schedule_appointment(result.get("appointment"), session_id)
+            created = 1
+        print(f"[conversation] task_added created={created}")
         return
 
     if action == "reminder_set":
-        await _schedule_appointment(result.get("appointment"), session_id)
+        if result.get("appointment"):
+            await _schedule_appointment(result.get("appointment"), session_id)
+            print("[conversation] reminder_set scheduled")
+            return
+        # 安全网：模型偶尔漏掉 appointment 却把任务放在 task/tasks 里
+        created = 0
+        if result.get("task"):
+            created += 1 if _create_task_from_ai_task(result.get("task"), session_id) else 0
+        multi = result.get("tasks")
+        if isinstance(multi, list):
+            for one in multi:
+                created += 1 if _create_task_from_ai_task(one, session_id) else 0
+        if created:
+            print(f"[conversation] reminder_set fell back to task creation ({created})")
+        else:
+            print("[conversation] reminder_set but no appointment/task given")
         return
 
     # task_completed: mark the matching pending task done if the AI named one
