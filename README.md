@@ -2,7 +2,7 @@
 
 AI 驱动的个人语音助手 —— 会对话、会记任务、会在你需要的时候主动提醒你。
 
-OpenMemo 的核心是一个**可配置的大模型对话 AI**（默认 `glm-5.2`，你也可以换成任何 OpenAI 兼容接口，见下文 [配置你自己的 AI](#配置你自己的-ai-base-url--api-key--模型)）。它的特别之处在于：**AI 负责所有"思考"和"说话"**，服务端只有一个轻量程序，负责把 AI 的结构化输出解析出来、存任务、按时间把 AI 写的提醒念出来。
+OpenMemo 的核心是一个**可配置的大模型对话 AI**：任何 OpenAI 兼容的接口都能接（BaseURL + API Key + 模型名都由你在设置向导里填）。它的特别之处在于：**AI 负责所有"思考"和"说话"**，服务端只有一个轻量程序，负责把 AI 的结构化输出解析出来、存任务、按时间把 AI 写的提醒念出来。
 
 > 📱 **使用方式**：本项目通过 **iOS App** 使用（Web 仪表盘 `/` 辅助查看）。无飞书 / 钉钉 / 企业微信 等 IM 通道——纯自家 App。
 
@@ -16,7 +16,7 @@ OpenMemo 的核心是一个**可配置的大模型对话 AI**（默认 `glm-5.2`
 - 📰 **每日新闻**：你说"每天给我看新闻"，它每天到点搜索当天新鲜新闻播给你。
 - 📅 **带日程的重复任务**：暑假作业按天分配，每天提醒当天具体内容。
 - 🔈 **语音播报**：Mac mini 扬声器用中文读出提醒（Edge TTS）。
-- 📱 **iOS App**：手机上看任务、对话、管理会话（侧边栏）。> ⚠️ 尚未上架 App Store，需 Mac + Xcode 源码构建（见 [iOS 使用指南](docs/setup-ios-xcode.md)）。
+- 📱 **iOS App + 本地通知**：手机上看任务、对话、管理会话（侧边栏）；提醒时间到了手机也会弹本地通知（即使不在 Mac 旁）。> ⚠️ 尚未上架 App Store，需 Mac + Xcode 源码构建（见 [iOS 使用指南](docs/setup-ios-xcode.md)）。
 
 ### 智能任务类型
 
@@ -29,7 +29,58 @@ OpenMemo 的核心是一个**可配置的大模型对话 AI**（默认 `glm-5.2`
 
 ---
 
-## 二、架构
+## 二、快速开始（就一条命令）
+
+> 🚀 **只需一个命令，别的都不用你管。**
+
+```bash
+git clone https://github.com/EthanHe2014/OpenMemo.git   # 或下载解压
+cd OpenMemo
+./start.sh
+```
+
+`./start.sh` 会自动完成：
+
+1. **检查 Python 3.10+**（没有会提示你安装）
+2. **创建虚拟环境** `.venv`（仅首次）
+3. **安装全部依赖**（仅首次）
+4. **进入交互式设置向导**（首次或配置不完整时自动出现）——它会`一步一步`带你：
+   - **选择 AI 提供商**：OpenAI / DeepSeek / 智谱 / Moonshot / Ollama（本地）/ 自定义，接口地址自动预填、可修改
+   - **填入 AI 接口密钥 + 模型名** —— 密钥输入时不回显，不怕被偷看
+   - **选择新闻搜索服务**（可选）：Tavily / Brave / Serper / 自定义 / 不配置
+   - **服务端口 / 语音音色** 等偏好
+5. **启动服务**（端口 `18890`，首次启动自动建好数据库 `data/openmemo.db`）
+
+看到 `Application startup complete` + `[调度器] 已启动` 即成功。
+
+**以后每次启动**：直接 `./start.sh` 即可，配置已保存，环境秒起，不再重复安装、不再重复询问。
+
+---
+
+## 三、配置你自己的 AI（设置向导）
+
+OpenMemo 的对话大脑可以是**任何 OpenAI 兼容的模型服务**，不局限于某一家、也没有内置默认模型。运行一次 `./start.sh`，设置向导会先让你**选择 AI 提供商**（OpenAI / DeepSeek / 智谱 / Moonshot / Ollama 本地 / 自定义），选好后自动预填对应接口地址（可改），再引导你填三样东西：
+
+| 配置项 | 说明 |
+|--------|------|
+| `AI_BASE_URL` | 你的模型服务接口地址，通常是 `.../v1` |
+| `AI_API_KEY` | 你的接口密钥（输入时不回显） |
+| `AI_MODEL` | 你的模型名 |
+
+- 接口只要**兼容 OpenAI 的 `/chat/completions` 且支持流式（stream）响应**即可。
+- **没有任何默认模型、默认地址、默认密钥**——这三项不填服务不会启动。
+- 想改配置，随时重跑向导：
+  ```bash
+  python setup.py          # 走一遍：改 AI / 搜索 / 偏好
+  python setup.py --reset  # 清空旧值，从零配
+  ```
+- 配置保存在 `.env`（已 gitignore，不会泄露到仓库）。改完 `setup.py` 里的值后**重启服务**生效。
+
+> ⚠️ 本项目的核心逻辑依赖模型**稳定的结构化 JSON 输出**（`{action, task, appointment, reply}`）与**流式响应**。若换的模型输出不稳定，任务创建可能受影响。
+
+---
+
+## 四、架构
 
 **AI 自主架构**（2026-08 新版）：
 
@@ -39,25 +90,25 @@ iOS App
    ▼
 OpenMemo 服务端（FastAPI）
    │  【唯一行为逻辑：把消息交给 AI，解析 AI 返回的 JSON】
-   │  1. 把"用户消息 + 历史 + 当前时间"发给你的 AI 接口（默认 glm-5.2）
-   │  2. AI 返回 { reply, action, task{time, reminder_text, ...}, appointment{at, read_aloud} }
+   │  1. 把"用户消息 + 历史 + 当前时间"发给你的 AI 接口
+   │  2. AI 返回 { action, task{time, reminder_text, ...}, appointment{at, read_aloud}, reply }
    │  3. 服务端 ①原样回复 AI 的话 ②把任务/提醒存进 SQLite 并按时间调度
    │  4. 到点 → 把 AI 写的 reminder_text 用 Edge TTS 生成语音 → Mac 扬声器播报
    ▼
-iOS App（任务列表 / 提醒状态） / Mac 扬声器
+iOS App（任务列表 / 提醒状态 / 本地通知） / Mac 扬声器
 ```
 
 - **AI 全权负责对话**：问什么、怎么问、是否放弃追问、写什么样的话，全部由 AI 自己决定。
 - **服务端不做任何"话术/模板/槽位填充"**：它只负责解析 AI 的 JSON、存任务、按时播报。
-- **模型**：可配置。默认 `glm-5.2`（通过自定义接口 `https://yuanyuaicloud.cn/v1`，仅支持流式请求）；可在 `.env` 里改成你自己的 BaseURL / API Key / 模型名，任意 OpenAI 兼容接口都能用。
+- **模型完全可配置**：通过设置向导填入 BaseURL / API Key / 模型名，任意 OpenAI 兼容接口都能用。
 
 ### 技术栈
 
 | 组件 | 技术 |
 |------|------|
-| 服务端 | Python 3.14 + FastAPI |
-| AI | 可配置大模型（默认 glm-5.2，任意 OpenAI 兼容接口） |
-| 实时新闻 | Tavily 搜索 API |
+| 服务端 | Python 3.10+ + FastAPI |
+| AI | 任意 OpenAI 兼容接口（可配置，无默认） |
+| 实时新闻 | 可配置的新闻搜索 API（向导中自选提供商，可选） |
 | TTS（文字转语音） | Edge TTS（zh-CN-XiaoxiaoNeural） |
 | 存储 | SQLite |
 | 调度 | APScheduler |
@@ -67,23 +118,24 @@ iOS App（任务列表 / 提醒状态） / Mac 扬声器
 
 ---
 
-## 三、项目结构
+## 五、项目结构
 
 ```
 OpenMemo/
 ├── README.md
 ├── requirements.txt      # 依赖清单
-├── start.sh              # 一键启动脚本
-├── .env.example          # 配置模板（复制为 .env 填真实值）
+├── start.sh              # 一键启动：环境 + 依赖 + 设置向导 + 启动
+├── setup.py              # 交互式设置向导（配 AI / 搜索 / 偏好）
+├── .env.example          # 配置模板（空值；真实配置由 setup.py 生成 .env）
 ├── openmemo/
 │   ├── __init__.py
 │   ├── server.py         # FastAPI 服务 + 全部 REST API
-│   ├── ai.py             # glm-5.2 接入 + SYSTEM_PROMPT（AI 的"人设"）
+│   ├── ai.py             # AI 接口接入 + SYSTEM_PROMPT（AI 的"人设"）
 │   ├── conversation.py   # 核心：把消息交给 AI，解析 JSON，原样回复
 │   ├── scheduler.py      # APScheduler 提醒调度 + 按任务类型执行
 │   ├── tasks.py          # 任务/会话 的 SQLite 存取
 │   ├── voice.py          # Edge TTS 生成语音 + Mac 扬声器播放
-│   └── config.py         # 配置读取（.env）
+│   └── config.py         # 配置读取（.env，纯环境变量，无硬编码密钥）
 ├── data/                 # SQLite 数据库 + 音频缓存（自动创建）
 ├── tests/
 │   └── test_tasks.py
@@ -99,69 +151,19 @@ OpenMemo/
 
 ---
 
-## 配置你自己的 AI（Base URL / API Key / 模型）
+## 六、部署到服务器（可选）
 
-OpenMemo 的对话大脑可以是**任何 OpenAI 兼容的模型服务**，不局限于某一家。你只需在 `.env` 里填三样东西：
-
-```bash
-# 示例：用自己的服务
-AI_BASE_URL=https://你的模型服务域名/v1      # 通常是 .../v1
-AI_API_KEY=sk-你的密钥
-AI_MODEL=你的模型名                          # 如 deepseek-chat / glm-5.2 / 你公司部署的模型
-```
-
-- 接口只要**兼容 OpenAI 的 `/chat/completions` 且支持流式（stream）响应**即可。
-- 不填 `AI_BASE_URL` / `AI_MODEL` 时使用默认值（`https://yuanyuaicloud.cn/v1` + `glm-5.2`），但 `AI_API_KEY` 必须填。
-- 改完 `.env` 后需**重启服务**生效。
-
-> ⚠️ 注意：本项目核心逻辑依赖模型的**结构化 JSON 输出**（`{reply, action, task, appointment}`）与流式响应。若换的模型输出不稳定，任务创建可能受影响。推荐先用默认模型跑通，再切换实验。
-
----
-
-## 四、部署启动（Step by Step）
-
-> 🚀 **一键启动**：只需一个命令，脚本会自动创建环境、装依赖、生成配置、启动服务——不用手动建库、不用手动装环境。
+`start.sh` 默认在本机前台运行（Ctrl+C 停止）。要长期在服务器/后台跑：
 
 ```bash
-git clone https://github.com/EthanHe2014/OpenMemo.git   # 或下载解压
-cd OpenMemo
-./start.sh
+# 方式一：nohup 后台运行
+nohup ./start.sh > openmemo.log 2>&1 &
+
+# 方式二：或直接用虚拟环境跑（配置好 .env 之后）
+.venv/bin/python -u -m openmemo.server > openmemo.log 2>&1 &
 ```
 
-首次运行会自动：
-1. 创建虚拟环境 `.venv`（不存在才建）
-2. 安装全部依赖（`requirements.txt`）
-3. 从 `.env.example` 生成 `.env`（不存在才生成）
-4. 启动后端服务（端口 `18890`，自动建好数据库 `data/openmemo.db`）
-
-看到 `Application startup complete` + `[调度器] 已启动` 即成功。
-
----
-
-### 只需一步：配置你的凭据
-
-先跑一次 `./start.sh` 生成 `.env`，然后编辑它填入真实凭据，再重启即可：
-
-```bash
-nano .env   # 或 vim / 文本编辑器
-```
-
-`.env` 里需要填：
-- `AI_API_KEY`：**必填**，你的 AI 接口 Key（见下方 [配置你自己的 AI](#配置你自己的-ai-base-url--api-key--模型)）。
-- `AI_BASE_URL` / `AI_MODEL`：可选，默认 `https://yuanyuaicloud.cn/v1` + `glm-5.2`；想用自己的服务就改。
-- `TAVILY_API_KEY`：可选，用于每日新闻（不填则新闻功能不可用）。
-- `SERVER_PORT`：默认 `18890`。
-
-> 以后每次启动：只要 `./start.sh` 即可，环境已建好会秒起，不会重复安装。
-
-### 手动方式（不用一键脚本）
-
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-cp .env.example .env          # 然后编辑 .env
-.venv/bin/python -u -m openmemo.server
-```
+服务默认监听 `0.0.0.0:18890`（可在设置向导里改端口）。手机用 App 时，要么用隧道把端口暴露到公网，要么让手机与 Mac 在同一局域网用 `http://<Mac的IP>:18890` 直连。
 
 ### 手机用 App（iOS）
 
@@ -178,7 +180,7 @@ cp .env.example .env          # 然后编辑 .env
 
 ---
 
-## 五、使用指南（Step by Step）
+## 七、使用指南（Step by Step）
 
 iOS App 就是你与 OpenMemo 对话的入口。
 
@@ -219,7 +221,7 @@ iOS App 就是你与 OpenMemo 对话的入口。
 1. 主动问你"几点起飞 / 到机场多久 / 国内还是国际"（信息不全时它自己会问）
 2. 帮你**反算出发时间**（国际航班会留出更长缓冲）
 3. 到点念一段贴心提醒给你听，比如：
-   > "早上好！该出发去机场啦。请检查好护照、签证和登机牌，带齐行李，路上注意安全！"
+   > "该出发去机场啦。请检查好护照、签证和登机牌，带齐行李，路上注意安全！"
 
 ### 📰 每日新闻
 
@@ -252,7 +254,7 @@ iOS App 就是你与 OpenMemo 对话的入口。
 
 ---
 
-## 六、API 接口
+## 八、API 接口
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -271,7 +273,7 @@ iOS App 就是你与 OpenMemo 对话的入口。
 
 ---
 
-## 七、数据模型
+## 九、数据模型
 
 ### 任务表（tasks）
 | 字段 | 说明 |
@@ -292,13 +294,16 @@ iOS App 就是你与 OpenMemo 对话的入口。
 
 ---
 
-## 八、常见问题
+## 十、常见问题
 
-**Q：模型一定要用 glm-5.2 吗？**
-不必。AI 接口完全可配置：在 `.env` 里改 `AI_BASE_URL`、`AI_API_KEY`、`AI_MODEL` 即可用任何 OpenAI 兼容服务（前提是该服务支持流式响应）。`glm-5.2` 只是默认值。
+**Q：为什么要设置向导？不能直接跑吗？**
+OpenMemo 需要至少一个可用的 AI 接口（BaseURL + Key + 模型）才能对话与建提醒。首次运行时 `./start.sh` 会自动弹出设置向导带你配好——之后就不用再配了。
 
 **Q：AI 不创建任务怎么办？**
-新版已内置"承诺就必须落地"规则：AI 一旦向你确认提醒时间，同一轮就必须返回创建任务的动作，服务端才会真正调度。若仍遇到"说了但不建"的情况，检查服务日志是否有 `[调度器] 已安排任务 X`。
+服务端内置了"承诺就必须落地"规则：AI 一旦向你确认提醒时间，同一轮就必须返回创建任务的动作，服务端才会真正调度。若仍遇到"说了但不建"：
+1. 检查服务日志是否有 `[调度器] 已安排任务 X`；
+2. 确认你配置的模型**输出稳定的 JSON**（设置向导里填的模型名是否正确）；
+3. 确认模型服务**支持流式响应**。
 
 **Q：App 连不上？**
 基本是隧道 URL 变了。把 `OpenMemoAPI.swift` 的 `baseURL` 更新成最新隧道地址（局域网或模拟器直连请用对应 IP）。
@@ -308,8 +313,8 @@ iOS App 就是你与 OpenMemo 对话的入口。
 
 ---
 
-## 九、免责 / 依赖
+## 十一、免责 / 依赖
 
-- 依赖一个可用的、支持流式的 OpenAI 兼容 AI 接口（默认 `https://yuanyuaicloud.cn/v1`，模型 `glm-5.2`，可在 `.env` 换成自己的）。
+- 需要你配置一个**支持流式的 OpenAI 兼容 AI 接口**（本项目不内置、不默认任何模型/密钥）。
 - 语音播报依赖本机 `edge-tts` + `afplay`，需要能访问 Edge TTS 服务。
-- 每日新闻依赖 Tavily API Key。
+- 每日新闻可选外部搜索 API（在设置向导里选择提供商并填入密钥；不配置则新闻由 AI 生成）。

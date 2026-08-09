@@ -59,12 +59,32 @@ def _parse_ai_datetime(value) -> str | None:
         return None
 
 
+def _derive_content(task: dict) -> str | None:
+    """Derive a task's content if the AI omitted it —— 优先 task.content，
+    缺省回退到 reminder_text / time_human，截断到合理长度。
+    这样即使 AI 没填 content，提醒也一定落地。
+    """
+    raw = task.get("content")
+    if raw and str(raw).strip():
+        return str(raw).strip()
+    # 回退 1：reminder_text 的开头（通常是自然的话，取前 40 字）
+    rt = task.get("reminder_text")
+    if rt and str(rt).strip():
+        t = " ".join(str(rt).strip().split())
+        return t[:40] + ("…" if len(t) > 40 else "")
+    # 回退 2：带时间的任务，直接叫"提醒"
+    if task.get("time"):
+        return "提醒"
+    return None
+
+
 def _create_task_from_ai_task(task: dict, session_id: str) -> dict | None:
     """Create a task from the AI's 'task' field. Returns the DB task or None."""
-    if not task or not task.get("content"):
+    if not task:
         return None
-    content = str(task["content"]).strip()
+    content = _derive_content(task)
     if not content:
+        print("[conversation] task_added but AI gave no task.content / reminder_text")
         return None
 
     time_str = _parse_ai_datetime(task.get("time"))
@@ -111,10 +131,11 @@ async def _schedule_appointment(appointment: dict, session_id: str):
         print("[conversation] appointment has no valid 'at', skipping")
         return
     read_aloud = appointment.get("read_aloud") or "到点啦！"
+    content = (appointment.get("content") or "提醒").strip() or "提醒"
 
     # One-shot: add a task with the reminder text, remind only once
     db_task = task_manager.add_task(
-        content="提醒",
+        content=content,
         trigger_time=at,
         priority="high",
         task_type="travel",  # generic 'read aloud at time' executor path
@@ -128,8 +149,15 @@ async def _apply_ai_action(result: dict, session_id: str):
     action = result.get("action") or "chat"
 
     if action == "task_added":
-        db_task = _create_task_from_ai_task(result.get("task"), session_id)
-        if not db_task:
+        # Single task
+        if result.get("task"):
+            _create_task_from_ai_task(result.get("task"), session_id)
+        # Multiple tasks (AI 一次建多个提醒)
+        multi = result.get("tasks")
+        if isinstance(multi, list):
+            for one in multi:
+                _create_task_from_ai_task(one, session_id)
+        if not result.get("task") and not multi:
             print("[conversation] task_added but AI gave no valid task.content")
         return
 

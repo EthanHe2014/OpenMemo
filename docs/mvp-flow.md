@@ -5,7 +5,7 @@
 ```
 iOS App → POST /api/chat → OpenMemo 服务端（FastAPI）
    │
-   ├─ 把"用户消息 + 历史 + 当前时间"交给 AI（默认 glm-5.2）
+   ├─ 把"用户消息 + 历史 + 当前时间"交给 AI（可配置的 OpenAI 兼容接口）
    ├─ AI 返回结构化 JSON：{ reply, action, task{time, reminder_text, ...}, appointment{at, read_aloud} }
    ├─ 服务端 ①原样回复 AI 的话 ②把任务/提醒存进 SQLite 并按时间调度
    └─ 到点 → Edge TTS 生成语音 → Mac 扬声器播放（afplay）
@@ -15,7 +15,7 @@ iOS App → POST /api/chat → OpenMemo 服务端（FastAPI）
 
 - **没有任何确定性"话术/模板/槽位填充"逻辑**。问什么、怎么问、是否追问、写什么话，全部由 AI 自主决定。
 - 服务端只有一个轻量程序：解析 AI 的 JSON → 原样回复 → 存任务 → 按时播报。
-- 智能任务类型由 AI 判定：`normal` / `travel`（出行，AI 反算出发时间）/ `news`（每日新闻，Tavily 搜索）/ `schedule`（带日程的重复任务，如暑假作业）。
+- 智能任务类型由 AI 判定：`normal` / `travel`（出行，AI 反算出发时间）/ `news`（每日新闻，可配置的搜索 API）/ `schedule`（带日程的重复任务，如暑假作业）。
 
 ## 详细流程
 

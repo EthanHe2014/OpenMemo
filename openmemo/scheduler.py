@@ -301,55 +301,125 @@ SCHEDULE_REMIND_PROMPT = """你是OpenMemo，现在需要提醒用户今天该�
 4. 直接输出提醒内容，不要JSON格式。"""
 
 
-async def _fetch_news(topic: str, max_retries: int = 1) -> str:
-    """通过 Tavily 搜索实时新闻（topic: news），失败则降级由 AI 生成。"""
-    try:
-        import httpx
-        from .config import TAVILY_API_KEY, TAVILY_BASE_URL
-        if not TAVILY_API_KEY:
-            return "（无新闻源，AI生成内容）"
-        # 把用户topic映射成更自然的搜索关键词
-        query_map = {
-            "科技": "科技 新闻",
-            "体育": "体育 新闻",
-            "财经": "财经 新闻",
-            "国际": "国际 新闻",
-            "天气": "天气 预报",
-        }
-        query = query_map.get(topic, f"{topic} 新闻")
-        payload = {
-            "api_key": TAVILY_API_KEY,
-            "query": query,
-            "topic": "news",
-            "search_depth": "basic",
-            "max_results": 6,
-            "include_answer": True,
-        }
-        async with httpx.AsyncClient(timeout=12.0) as client:
-            resp = await client.post(f"{TAVILY_BASE_URL}/search", json=payload)
+def _news_query(topic: str) -> str:
+    """把用户 topic 映射成更自然的搜索关键词。"""
+    query_map = {
+        "科技": "科技 新闻",
+        "体育": "体育 新闻",
+        "财经": "财经 新闻",
+        "国际": "国际 新闻",
+        "天气": "天气 预报",
+    }
+    return query_map.get(topic, f"{topic} 新闻")
+
+
+def _format_search_results(data: dict, provider: str) -> str:
+    """把各提供商返回的 JSON 统一格式化成新闻文本。"""
+    answer = ""
+    results = []
+    if provider == "tavily":
+        answer = data.get("answer", "") or ""
+        results = data.get("results", []) or []
+    elif provider == "brave":
+        results = data.get("results", []) or []
+    elif provider == "serper":
+        answer = data.get("answerBox", {}).get("answer", "") or ""
+        results = (data.get("news", []) or []) or (data.get("organic", []) or [])
+    elif provider == "custom":
+        answer = data.get("answer", "") or ""
+        results = data.get("results", []) or []
+
+    items = []
+    for r in results[:5]:
+        title = r.get("title", "") or ""
+        content = r.get("content", "") or r.get("snippet", "") or r.get("description", "") or ""
+        date = r.get("published_date", "") or r.get("date", "") or ""
+        link = r.get("url", "") or r.get("link", "") or ""
+        line = title
+        if date:
+            line += f"（{date[:10]}）"
+        if content:
+            line += f"：{content[:120]}"
+        if link:
+            line += f" {link}"
+        items.append(line)
+    combined = (answer + "\n\n" + "\n".join(items)) if items else answer
+    return combined.strip()[:1500]
+
+
+async def _search_news(provider: str, api_key: str, base_url: str, topic: str) -> str:
+    """按 SEARCH_PROVIDER 调用对应的搜索接口；任何失败都返回空串，由调用方降级为 AI 生成。"""
+    import httpx
+
+    query = _news_query(topic)
+    timeout = httpx.Timeout(12.0)
+
+    if provider == "tavily":
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(
+                f"{base_url}/search",
+                json={
+                    "api_key": api_key,
+                    "query": query,
+                    "topic": "news",
+                    "search_depth": "basic",
+                    "max_results": 6,
+                    "include_answer": True,
+                },
+            )
             if resp.status_code == 200:
-                data = resp.json()
-                answer = data.get("answer", "") or ""
-                items = []
-                for r in data.get("results", [])[:5]:
-                    title = r.get("title", "")
-                    content = r.get("content", "")
-                    date = r.get("published_date", "")
-                    line = title
-                    if date:
-                        line += f"（{date[:10]}）"
-                    if content:
-                        line += f"：{content[:120]}"
-                    items.append(line)
-                combined = (answer + "\n\n" + "\n".join(items)) if items else answer
-                if combined.strip():
-                    return combined[:1500]
-                return "（Tavily无结果，AI生成内容）"
-            else:
-                print(f"[新闻] Tavily 返回 {resp.status_code}")
-                return "（无外部新闻源，AI生成内容）"
+                return _format_search_results(resp.json(), "tavily")
+            print(f"[新闻] 搜索服务返回 {resp.status_code}")
+            return ""
+
+    if provider == "brave":
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(
+                f"{base_url}/news/search",
+                params={"q": query, "count": 6},
+                headers={"X-Subscription-Token": api_key, "Accept": "application/json"},
+            )
+            if resp.status_code == 200:
+                return _format_search_results(resp.json(), "brave")
+            print(f"[新闻] 搜索服务返回 {resp.status_code}")
+            return ""
+
+    if provider == "serper":
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(
+                f"{base_url}/news",
+                params={"q": query, "num": 6},
+                headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
+                json={"q": query},
+            )
+            if resp.status_code == 200:
+                return _format_search_results(resp.json(), "serper")
+            print(f"[新闻] 搜索服务返回 {resp.status_code}")
+            return ""
+
+    # custom：默认按通用 schema（POST {base}/search，json 含 api_key/query）调用
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.post(
+            f"{base_url}/search",
+            json={"api_key": api_key, "query": query, "max_results": 6},
+        )
+        if resp.status_code == 200:
+            return _format_search_results(resp.json(), "custom")
+        print(f"[新闻] 搜索服务返回 {resp.status_code}")
+        return ""
+
+
+async def _fetch_news(topic: str, max_retries: int = 1) -> str:
+    """获取实时新闻：按 SEARCH_PROVIDER 调用外部搜索，失败则降级由 AI 生成。"""
+    try:
+        from .config import SEARCH_PROVIDER, SEARCH_API_KEY, SEARCH_BASE_URL
+        if not SEARCH_PROVIDER or not SEARCH_API_KEY:
+            return "（无外部新闻源，AI生成内容）"
+        text = await _search_news(SEARCH_PROVIDER, SEARCH_API_KEY, SEARCH_BASE_URL, topic)
+        if text.strip():
+            return text
     except Exception as e:
-        print(f"[新闻] Tavily 获取失败：{e}，使用AI生成")
+        print(f"[新闻] 搜索获取失败：{e}，使用AI生成")
 
     # 降级：由AI生成模拟内容
     return "（无外部新闻源，AI生成内容）"

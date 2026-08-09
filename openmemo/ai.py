@@ -1,4 +1,4 @@
-"""AI 接入模块 —— 通过自定义接口调用 glm-5.2"""
+"""AI 接入模块 —— 通过可配置的 OpenAI 兼容接口调用大模型"""
 import asyncio
 import json
 import re
@@ -16,26 +16,13 @@ SYSTEM_PROMPT = """你是OpenMemo，一个智能个人任务助手。你运行�
 - 你能记住用户的待办任务、动态信息任务（如每日新闻）、出行事件（如赶飞机）、带日程表的任务集（如暑假作业）。
 
 ## 你的工作方式（非常重要）
-你完全自由地引导对话：**没有任何外部程序替你做判断**——所有该问什么、怎么问、何时收拢信息、何时创建任务，都由你独立决定。你唯一要做的，就是返回下面这个 JSON 结构：
+你完全自由地引导对话：**没有任何外部程序替你做判断**——所有该问什么、怎么问、何时收拢信息、何时创建任务，都由你独立决定。你只需返回下面这个 JSON 结构（顺序按下方，task/appointment 在前，reply 在最后，这样即使输出被截断也优先保住任务字段）：
 
 {
-  "reply": "你现在要对用户说的话（你所能想到的最自然、最平滑的中文）",
   "action": "task_added | task_listed | task_completed | reminder_set | chat | collecting",
-  "task": {
-    "content": "任务/提醒的内容（简短，且必须忠于用户原意，绝不擅自改名）",
-    "time": "YYYY-MM-DD HH:MM（提醒的确切时间，24小时制；不确定就填 null）",
-    "time_human": "给用户看的时间（如'明天早上9:30'）",
-    "duration_minutes": 60,
-    "priority": "high|medium|low",
-    "recurring": null 或 "每天"/"每周一" 等,
-    "task_type": "add|news|travel|schedule",
-    "meta": {},
-    "reminder_text": "到了 time 这个时刻，要【语音】读给用户听的话（务必自然、具体、像真人提醒；赶飞机就写'该出发去机场啦，检查一下护照和登机牌'）"
-  },
-  "appointment": {
-    "at": "YYYY-MM-DD HH:MM",
-    "read_aloud": "到点后要读的内容"
-  }
+  "task": {...},
+  "appointment": {...},
+  "reply": "你现在要对用户说的话（你所能想到的最自然、最平滑的中文）"
 }
 
 ## 每个字段的含义
@@ -49,7 +36,7 @@ SYSTEM_PROMPT = """你是OpenMemo，一个智能个人任务助手。你运行�
   - 闲聊、回答无关问题 → `chat`
 - **task.time**：你算好的确切提醒时间（当前日期时间会注入给你）。出行提醒就是出发提醒时间，每天推送就是每天几点，作业提醒就是每天提醒时间。
 - **task.reminder_text**：重要！这是到点后要念给用户听的**原文**——你亲笔写的、具体又贴心的提醒。
-- **appointment.at / appointment.read_aloud**：一次性到点提醒用这个，不需要存成任务。二者与 task 择一填写即可；都不需要时填 null。
+- **appointment.content / at / read_aloud**：一次性到点提醒用这个，不需要存成任务。content 是提醒的简短内容（忠于用户原意，如'喝水'），at 是触发时间，read_aloud 是到点念的内容。二者与 task 择一填写即可；都不需要时填 null。
 
 ## 引导对话的准则
 - **你决定问什么、怎么问。** 连续、自然地问，一次只推进一个关键点，别一次丢一堆问题。
@@ -58,6 +45,8 @@ SYSTEM_PROMPT = """你是OpenMemo，一个智能个人任务助手。你运行�
 - **绝不复读同一个问题。** 用户没正面回答时，换个问法，或先回应一下再继续。
 - **信息够了就动手。** 只要关键信息（做什么、什么时间）齐了就创建任务/设提醒，不要反复确认。琐事（买瓶牛奶）不用追时间，直接记下。
 - **承诺了就必须落地（极其重要）。** 一旦你在回复里向用户确认'我会在X点提醒你'或'已帮你安排好提醒'，那么**同一轮**你必须同时返回 `task_added`（或 `reminder_set`）+ 填好 task.time / appointment.at —— 绝不能只写话、不落地。
+  - 用户一次想要**多个不同时间的提醒**（如'提前3小时提醒收拾行李 + 提前2小时出发'）：请把它们拆成**多条 task** 依次放进 `tasks` 数组字段（或至少把最重要的一个按时落地，并在 reply 里说明其余可选）。每个提醒都要有 content 和 time。
+  - task 里**必须包含 content**（任务内容）。如果你漏写了 content，服务端就无法落地——请始终把用户要提醒的事写进 content，把到点要说的话写进 reminder_text。
   - 用户对某个提醒时间说'可以 / 行 / 好 / 就这个'，这就是**落地的信号**：本轮就创建提醒，不要再拖到下一轮。
   - 例：你提出6:30提醒，用户回'可以'，你既要在 reply 里确认，也必须在 task 里把触发时间设为 6:30（或 appointment.at=6:30），action 必须是 task_added/reminder_set，否则服务器不会真正创建提醒。
   - 检查：如果这条 reply 里提到了任何已敲定的提醒时间，那 task.time 或 appointment.at 必须等于这个时间，两者不能为空。
@@ -92,15 +81,15 @@ async def call_ai(messages: list, system_prompt: str = None, retries: int = 1,
                     temperature: float = None, max_tokens: int = None) -> dict:
     """Call the AI API and return the response.
     
-    Uses STREAMING because the yuanyuaicloud endpoint only responds to
-    stream=true requests (non-streaming hangs/times out).
+    Uses STREAMING because some OpenAI-compatible endpoints only respond
+    to stream=true requests (non-streaming may hang/timeout).
     
     Args:
         messages: Conversation messages
         system_prompt: System prompt (default: main SYSTEM_PROMPT)
         retries: Number of retries on failure
         temperature: Sampling temperature (default 0.3 for precision, use 0.8+ for creativity)
-        max_tokens: Max response tokens (default 500)
+        max_tokens: Max response tokens (default 1500 — JSON 可能较长，勿设过小以免截断丢字段)
     """
     if not AI_API_KEY:
         return {"content": None, "error": "AI API key not configured"}
@@ -116,7 +105,7 @@ async def call_ai(messages: list, system_prompt: str = None, retries: int = 1,
         "model": AI_MODEL,
         "messages": full_messages,
         "temperature": temperature if temperature is not None else 0.3,
-        "max_tokens": max_tokens or 500,
+        "max_tokens": max_tokens or 1500,  # 足够大，避免 JSON 被截断导致任务/提醒丢失
         "stream": True  # CRITICAL: endpoint only works with streaming
     }
     
@@ -176,30 +165,69 @@ async def call_ai(messages: list, system_prompt: str = None, retries: int = 1,
 
 
 def _extract_json(content: str) -> dict | None:
-    """Robustly extract JSON from AI response, handling various formats."""
+    """Robustly extract JSON from AI response, handling various formats.
+
+    Also attempts to repair JSON truncated by max_tokens: if the closing
+    brace is missing, we try progressively appending closing braces/quotes
+    so task/appointment fields (placed first) survive.
+    """
     content = content.strip()
-    
+
     try:
         return json.loads(content)
     except json.JSONDecodeError:
         pass
-    
+
     json_match = re.search(r'```(?:json)?\s*(.*?)\s*```', content, re.DOTALL)
     if json_match:
-        try:
-            return json.loads(json_match.group(1))
-        except json.JSONDecodeError:
-            pass
-    
+        candidate = json_match.group(1).strip()
+        parsed = _try_parse_or_repair(candidate)
+        if parsed:
+            return parsed
+
     brace_start = content.find('{')
     brace_end = content.rfind('}')
-    if brace_start != -1 and brace_end > brace_start:
-        try:
-            return json.loads(content[brace_start:brace_end+1])
-        except json.JSONDecodeError:
-            pass
-    
+    if brace_start != -1:
+        if brace_end > brace_start:
+            parsed = _try_parse_or_repair(content[brace_start:brace_end + 1])
+            if parsed:
+                return parsed
+        else:
+            # no closing brace at all -> truncated; repair from '{' to end
+            parsed = _try_parse_or_repair(content[brace_start:])
+            if parsed:
+                return parsed
+
     return None
+
+
+def _try_parse_or_repair(text: str) -> dict | None:
+    """Try json.loads, then attempt several truncation repairs."""
+    for candidate in _repair_candidates(text):
+        try:
+            obj = json.loads(candidate)
+            if isinstance(obj, dict) and obj:
+                return obj
+        except json.JSONDecodeError:
+            continue
+    return None
+
+
+def _repair_candidates(text: str) -> list:
+    """Yield increasingly aggressive repairs for a truncated JSON object."""
+    yield text
+    # 1) Missing closing brace(s)
+    for n in range(1, 6):
+        yield text + '}' * n
+    # 2) Unclosed string at the very end -> close it then brace(s)
+    for n in range(1, 6):
+        yield text + '"' + '}' * n
+    # 3) Trailing comma before closing
+    stripped = text.rstrip()
+    if stripped.endswith(','):
+        for candidate in _repair_candidates(stripped[:-1]):
+            yield candidate
+    return
 
 
 async def analyze_intent(user_message: str, conversation_context: list = None) -> dict:
@@ -267,7 +295,8 @@ async def analyze_intent(user_message: str, conversation_context: list = None) -
             "action": parsed.get("action", "chat"),
             "reply": parsed.get("reply", ""),
             "task": parsed.get("task"),
-            "appointment": parsed.get("appointment")
+            "tasks": parsed.get("tasks"),
+            "appointment": parsed.get("appointment"),
         }
 
     return {

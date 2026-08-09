@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
-from .config import SERVER_HOST, SERVER_PORT
+from .config import SERVER_HOST, SERVER_PORT, AI_MODEL
 from .conversation import process_message
 from .tasks import TaskManager, ConversationManager
 from .scheduler import start_scheduler, stop_scheduler
@@ -51,7 +51,8 @@ async def health_check():
     return {
         "name": "OpenMemo",
         "version": "0.1.0",
-        "status": "running"
+        "status": "running",
+        "model": AI_MODEL or ""
     }
 
 

@@ -3,7 +3,6 @@ import pytest
 import os
 import tempfile
 from openmemo.tasks import TaskManager, ConversationManager, init_db
-from openmemo.conversation import parse_time_string
 
 
 @pytest.fixture
@@ -144,35 +143,3 @@ class TestConversationManager:
         assert context[0] == {"role": "user", "content": "Hello"}
 
 
-class TestTimeParsing:
-    def test_tomorrow(self):
-        from datetime import datetime, timedelta
-        result = parse_time_string("明天 3点")
-        tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-        assert result.startswith(tomorrow)
-    
-    def test_today(self):
-        from datetime import datetime
-        result = parse_time_string("今天下午2点")
-        today = datetime.now().strftime("%Y-%m-%d")
-        assert result.startswith(today)
-        assert "14" in result or "15" in result
-    
-    def test_specific_time(self):
-        result = parse_time_string("2026-07-25 15:30")
-        assert result == "2026-07-25 15:30"
-    
-    def test_tonight(self):
-        from datetime import datetime
-        result = parse_time_string("今晚8点")
-        today = datetime.now().strftime("%Y-%m-%d")
-        assert result.startswith(today)
-        assert "20" in result
-    
-    def test_none_input(self):
-        result = parse_time_string(None)
-        assert result is None
-    
-    def test_empty_input(self):
-        result = parse_time_string("")
-        assert result is None

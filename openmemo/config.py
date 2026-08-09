@@ -1,4 +1,4 @@
-"""OpenMemo 配置管理"""
+"""OpenMemo 配置管理（纯环境变量驱动，无任何硬编码密钥/模型/地址）"""
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -7,14 +7,16 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).parent.parent
 load_dotenv(BASE_DIR / ".env")
 
-# AI Configuration
-AI_BASE_URL = os.getenv("AI_BASE_URL", "https://yuanyuaicloud.cn/v1")
+# AI Configuration —— 只从环境变量读取；不配置/不填值时返回空，绝不内置默认模型或默认地址。
+AI_BASE_URL = os.getenv("AI_BASE_URL", "")
 AI_API_KEY = os.getenv("AI_API_KEY", "")
-AI_MODEL = os.getenv("AI_MODEL", "glm-5.2")
+AI_MODEL = os.getenv("AI_MODEL", "")
 
-# Tavily 搜索（用于 NEWS_JOB 实时新闻；密钥复用 OpenClaw 的配置）
-TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "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")
-TAVILY_BASE_URL = os.getenv("TAVILY_BASE_URL", "https://api.tavily.com")
+# 搜索（NEWS_JOB 实时新闻用）：纯环境变量驱动，无默认提供商、无默认密钥、无默认地址。
+# SEARCH_PROVIDER ∈ {tavily, brave, serper, custom}；为空或 SEARCH_API_KEY 为空 = 不启用外部搜索，新闻由 AI 生成。
+SEARCH_PROVIDER = os.getenv("SEARCH_PROVIDER", "")
+SEARCH_API_KEY = os.getenv("SEARCH_API_KEY", "")
+SEARCH_BASE_URL = os.getenv("SEARCH_BASE_URL", "")
 
 # (钉钉 / 企业微信 / 飞书 等渠道已移除，纯 App 使用)
 

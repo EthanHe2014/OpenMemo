@@ -178,7 +178,7 @@ elif result["intent"] == "SCHEDULE":
 
 - 当前 OpenMemo 运行在 Ethan 的 Mac mini 上，通过 cloudflared tunel 对外暴露
 - 没有外网持久化存储，重启后内存状态丢失（cron 等）
-- NEWS_JOB 的 web_search 能力需要集成一个搜索 API（webfetch 或 tavily 或 serpapi）
+- NEWS_JOB 的搜索能力通过可配置的搜索 API 实现（设置向导中选择提供商并填密钥，无内置默认）
 - 无 IM 推送通道（App 纯 REST，提醒通过任务状态 + Mac 扬声器播报）
 - TTS 已打通，用 `edge-tts` + `afplay`
 - OpenMemo 后端是 Python，无外部依赖（除了 httpx）
