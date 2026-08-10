@@ -14,6 +14,7 @@
 		62CAA70D95CF6E9EC22D31353DEFADC4 /* TaskListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6BB686A1F2274A64CA22FAA78160F46 /* TaskListViewModel.swift */; };
 		7ED051FA74363EDE488FB1D5464835D6 /* LocalNotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D99BF3FDC9FE5FFB1FF87BE32623D27 /* LocalNotificationManager.swift */; };
 		885A6C8C1714E34C44B570F1A04D9E5A /* Task.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF3D1609A5DDE7A9D549FADA992615F0 /* Task.swift */; };
+		897F987B59BEB9F76CE1FC30685CAFE2 /* MultilineTextField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 166DB576ED62CF488EDC1337493D4B6D /* MultilineTextField.swift */; };
 		ACFD02015216B0906D6D8197760EA888 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF73A5B7DF5609B7F5B3787E260F778C /* SettingsView.swift */; };
 		DA02BA6BB60124373031BCB6DE9A50CB /* AddTaskView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 857DA4318BB6EBB68DCB5D74A6E0D21E /* AddTaskView.swift */; };
 		E9CAA839B3F314F42ABDD36C5F9F0E7A /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13FA27488EB8D661C37BEAC94C868244 /* ChatViewModel.swift */; };
@@ -23,9 +24,10 @@
 
 /* Begin PBXFileReference section */
 		13FA27488EB8D661C37BEAC94C868244 /* ChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModel.swift; sourceTree = "<group>"; };
+		166DB576ED62CF488EDC1337493D4B6D /* MultilineTextField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultilineTextField.swift; sourceTree = "<group>"; };
 		428BADDB32345CCA623D11F5F18D0E3C /* TaskDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDetailView.swift; sourceTree = "<group>"; };
 		524E53A89F8D859299CE9CF131352452 /* OpenMemoAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenMemoAPI.swift; sourceTree = "<group>"; };
-		5F36CB9D529969A9E2B0518B76E56E51 /* OpenMemoApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenMemoApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5F36CB9D529969A9E2B0518B76E56E51 /* OpenMemoApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OpenMemoApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		614F757EA85F66FC59F1938139F32337 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		7D99BF3FDC9FE5FFB1FF87BE32623D27 /* LocalNotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNotificationManager.swift; sourceTree = "<group>"; };
 		857DA4318BB6EBB68DCB5D74A6E0D21E /* AddTaskView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddTaskView.swift; sourceTree = "<group>"; };
@@ -73,6 +75,7 @@
 			children = (
 				857DA4318BB6EBB68DCB5D74A6E0D21E /* AddTaskView.swift */,
 				F09FE163DC246EA664209733F02BA7D1 /* ChatView.swift */,
+				166DB576ED62CF488EDC1337493D4B6D /* MultilineTextField.swift */,
 				CF73A5B7DF5609B7F5B3787E260F778C /* SettingsView.swift */,
 				428BADDB32345CCA623D11F5F18D0E3C /* TaskDetailView.swift */,
 				8EA9D06452743221322319580ABAB234 /* TaskListView.swift */,
@@ -141,6 +144,7 @@
 				LastUpgradeCheck = 1000;
 				TargetAttributes = {
 					AE7691E9C109112168ED48E34741138F = {
+						DevelopmentTeam = W44ZFDH6DG;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -181,6 +185,7 @@
 				1CB05777BB6758E7AC3FD5F6430DC271 /* ChatView.swift in Sources */,
 				E9CAA839B3F314F42ABDD36C5F9F0E7A /* ChatViewModel.swift in Sources */,
 				7ED051FA74363EDE488FB1D5464835D6 /* LocalNotificationManager.swift in Sources */,
+				897F987B59BEB9F76CE1FC30685CAFE2 /* MultilineTextField.swift in Sources */,
 				FFAE772ABEA631D7F1467FE9D74D52EB /* OpenMemoAPI.swift in Sources */,
 				2DE81D56F4484C8B802F0F46D8E9512E /* OpenMemoApp.swift in Sources */,
 				ACFD02015216B0906D6D8197760EA888 /* SettingsView.swift in Sources */,
@@ -198,9 +203,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = W44ZFDH6DG;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = YES;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -210,9 +217,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = W44ZFDH6DG;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = YES;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -224,7 +233,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = W44ZFDH6DG;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OpenMemoApp/Info.plist;
@@ -232,10 +240,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.openmemo.app;
 				PRODUCT_MODULE_NAME = OpenMemoApp;
 				PRODUCT_NAME = OpenMemoApp;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -245,7 +250,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = W44ZFDH6DG;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = OpenMemoApp/Info.plist;
@@ -253,10 +257,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.openmemo.app;
 				PRODUCT_MODULE_NAME = OpenMemoApp;
 				PRODUCT_NAME = OpenMemoApp;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};

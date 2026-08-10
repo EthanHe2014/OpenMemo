@@ -78,23 +78,17 @@ struct ChatView: View {
         VStack(spacing: 0) {
             Divider()
             HStack(spacing: 8) {
-                TextField("输入消息...", text: Bindable(chatVM).inputText, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .lineLimit(1...4)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color(.systemGray6))
-                    .clipShape(RoundedRectangle(cornerRadius: 20))
-                    .submitLabel(.send)   // 软键盘回车键显示为“发送”
-                    .onSubmit { chatVM.send() }  // 软键盘“发送”键
-                    .onKeyPress(.return, phases: .down) { press in  // 硬件键盘：回车=发送，Ctrl+回车=换行
-                        if press.modifiers.contains(.control) {
-                            chatVM.inputText += "\n"
-                        } else {
-                            chatVM.send()
-                        }
-                        return .handled
-                    }
+                MultilineTextField(
+                    text: Bindable(chatVM).inputText,
+                    placeholder: "输入消息...",
+                    onEnter: { chatVM.send() },       // 回车 = 发送
+                    onCtrlEnter: { chatVM.inputText += "\n" }  // Ctrl+回车 = 换行
+                )
+                .frame(minHeight: 40, maxHeight: 110)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                .background(Color(.systemGray6))
+                .clipShape(RoundedRectangle(cornerRadius: 20))
 
                 Button {
                     chatVM.send()
