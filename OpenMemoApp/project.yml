@@ -10,11 +10,9 @@ configs:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    DEVELOPMENT_TEAM: "W44ZFDH6DG"
+    DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
     TARGETED_DEVICE_FAMILY: "1,2"
-    SUPPORTS_MACCATALYST: YES
-    SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
 targets:
   OpenMemoApp:
     type: application

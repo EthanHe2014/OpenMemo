@@ -1,10 +1,7 @@
 import SwiftUI
-import Speech
 
 struct ChatView: View {
     @Environment(ChatViewModel.self) private var chatVM
-    @State private var voice = VoiceInputManager()
-    @State private var speechAuthGranted = false
 
     var body: some View {
         NavigationStack {
@@ -39,16 +36,6 @@ struct ChatView: View {
         .task {
             // 进入时（含应用启动）：新建聊天 + 加载侧边栏。
             await chatVM.startFresh()
-            speechAuthGranted = await VoiceInputManager.requestAuthorization()
-            // 语音留言完成 → 填入输入框并发送
-            voice.onMessageReady = { text in
-                chatVM.inputText = text
-                chatVM.send()
-            }
-            voice.onWakeWord = {
-                // 唤醒成功：清空输入框准备留言
-                chatVM.inputText = ""
-            }
         }
     }
 
@@ -88,29 +75,10 @@ struct ChatView: View {
     }
 
     private var inputBar: some View {
-        VStack(spacing: 4) {
-            // 语音状态提示
-            if voice.isListening {
-                HStack(spacing: 6) {
-                    Image(systemName: voice.isTranscribing ? "mic.fill" : "ear")
-                        .foregroundStyle(voice.isTranscribing ? .red : .green)
-                    Text(voice.isTranscribing
-                         ? (voice.liveText.isEmpty ? "在听… 静音 2 秒自动发送" : "\(voice.liveText)")
-                         : "常听中… 说 \"memo memo\" 开始留言")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    Spacer()
-                    Button("取消") { voice.stop() }
-                        .font(.caption)
-                }
-                .padding(.horizontal, 16)
-                .transition(.opacity)
-            }
-
+        VStack(spacing: 0) {
             Divider()
             HStack(spacing: 8) {
-                TextField("输入消息...", text: inputBinding, axis: .vertical)
+                TextField("输入消息...", text: Bindable(chatVM).inputText, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...4)
                     .padding(.horizontal, 12)
@@ -127,36 +95,6 @@ struct ChatView: View {
                         }
                         return .handled
                     }
-
-                // 唤醒词常听开关（前台）
-                Button {
-                    if voice.isListening && !voice.isTranscribing {
-                        voice.stop()
-                    } else {
-                        voice.stop()
-                        voice.startWakeListening()
-                    }
-                } label: {
-                    Image(systemName: voice.isListening && !voice.isTranscribing ? "ear.fill" : "ear")
-                        .font(.title2)
-                }
-                .foregroundStyle((voice.isListening && !voice.isTranscribing) ? .green : .secondary)
-                .disabled(!speechAuthGranted)
-
-                // 麦克风：语音留言
-                Button {
-                    if voice.isTranscribing {
-                        voice.stop()
-                    } else {
-                        voice.stop()
-                        voice.startVoiceInput()
-                    }
-                } label: {
-                    Image(systemName: voice.isTranscribing ? "mic.fill" : "mic")
-                        .font(.title2)
-                }
-                .foregroundStyle(voice.isTranscribing ? .red : .secondary)
-                .disabled(!speechAuthGranted)
 
                 Button {
                     chatVM.send()
@@ -175,21 +113,6 @@ struct ChatView: View {
             .padding(.vertical, 8)
         }
         .background(.bar)
-        .animation(.easeInOut(duration: 0.2), value: voice.isListening)
-    }
-
-    /// 输入框绑定：语音留言时实时显示转写文字，否则走普通输入
-    private var inputBinding: Binding<String> {
-        Binding(
-            get: { voice.isTranscribing ? voice.liveText : chatVM.inputText },
-            set: { newValue in
-                if voice.isTranscribing {
-                    voice.liveText = newValue
-                } else {
-                    chatVM.inputText = newValue
-                }
-            }
-        )
     }
 }
 
