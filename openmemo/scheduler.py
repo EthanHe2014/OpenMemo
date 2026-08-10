@@ -122,15 +122,6 @@ async def _generate_reminder_message(content: str, priority: str) -> dict:
     return {"speech": text}
 
 
-def _finish_reminder(task: dict):
-    """提醒触发收尾：标记已提醒；一次性任务 → status=executed（App 显示"已执行"），
-    循环任务保持 pending 等下一次触发。"""
-    task_id = task["task_id"]
-    task_manager.mark_reminded(task_id)
-    if not task.get("is_recurring"):
-        task_manager.update_task(task_id, status="executed")
-
-
 async def reminder_callback(task_id: int):
     """提醒触发时调用——AI生成消息 + 本地语音播报（App 轮询 reminder_sent 感知提醒）"""
     task = task_manager.get_task(task_id)
@@ -150,10 +141,6 @@ async def reminder_callback(task_id: int):
         return
     if task_type == "schedule":
         await _execute_schedule_reminder(task)
-        return
-    # 工具任务：weather（槽点 tool=weather）
-    if (task.get("meta_data") or {}).get("tool") == "weather":
-        await _execute_weather_job(task)
         return
     
     # 普通任务：用AI生成自然、多样的提醒消息
@@ -175,8 +162,8 @@ async def reminder_callback(task_id: int):
     # 记录提醒原文，App 轮询 /api/reminders 显示
     task_manager.add_reminder(task_id, content, speech)
 
-    # 标记已提醒 + 状态切换（一次性→已执行，循环→保持待办）
-    _finish_reminder(task)
+    # 标记已提醒（App 通过轮询 reminder_sent 感知提醒）
+    task_manager.mark_reminded(task_id)
     
     # 循环任务：安排下一次
     if task["is_recurring"]:
@@ -184,112 +171,61 @@ async def reminder_callback(task_id: int):
 
 
 def schedule_recurring(task_id: int, recurring: str, content: str, priority: str):
-    """安排循环任务的下一次（复用同一 task_id，不再新建孤儿行）。
-    支持 每天 / 每周X / 工作日 / 每月X日；超过执行周期（period 截止日期）则任务自动完结。"""
-    task = task_manager.get_task(task_id)
-    if not task:
-        return
-    meta = task.get("meta_data") or {}
+    """安排循环任务的下一次"""
+    recurring_lower = recurring.lower() if recurring else ""
 
-    # 下一次触发时间
-    next_dt = _next_occurrence(task, recurring)
-    if next_dt is None:
-        # 算不出下一次 → 任务完结（已执行）
-        task_manager.update_task(task_id, status="executed")
-        return
-
-    # 执行周期（period 截止）：超过截止日期就不再排
-    period = meta.get("period")
-    if period and period not in ("长期", "", None):
-        try:
-            deadline = datetime.strptime(str(period)[:10], "%Y-%m-%d")
-            if next_dt.date() > deadline:
-                print(f"[调度器] 任务 {task_id} 已过执行周期（{period}），完结")
-                task_manager.update_task(task_id, status="executed")
-                return
-        except (ValueError, TypeError):
-            pass
-
-    next_str = next_dt.strftime("%Y-%m-%d %H:%M")
-    # 复用同一 task_id：更新时间 + 重置提醒状态 + 重新调度
-    task_manager.update_task(task_id, trigger_time=next_str, reminder_sent=0, status="pending")
+    # 用任务自己的触发时间决定每天几点（不再写死 9:00）
+    hour, minute = 9, 0
     try:
-        scheduler.remove_job(f"task_{task_id}")
-    except Exception:
+        task = task_manager.get_task(task_id)
+        tt = (task or {}).get("trigger_time") or ""
+        if len(tt) >= 16:
+            hour = int(tt[11:13])
+            minute = int(tt[14:16])
+    except (ValueError, TypeError, IndexError):
         pass
-    scheduler.add_job(
-        reminder_callback,
-        trigger=DateTrigger(run_date=next_dt),
-        args=[task_id],
-        id=f"task_{task_id}",
-        replace_existing=True
-    )
-    print(f"[调度器] 循环任务 {task_id} 下一次：{next_str}")
-
-
-def _next_occurrence(task: dict, recurring: str) -> datetime | None:
-    """根据循环模式计算下一次触发时间（保留任务原定的时分）。返回 None 表示无法计算。"""
-    from datetime import timedelta
-    import calendar
-    recurring_lower = (recurring or "").lower()
-    now = datetime.now()
-
-    # 任务原定的时分（循环任务每天/每周都在这个点触发）
-    hour, minute = now.hour, now.minute
-    tt = task.get("trigger_time")
-    if tt:
-        try:
-            base = datetime.strptime(str(tt), "%Y-%m-%d %H:%M")
-            hour, minute = base.hour, base.minute
-        except (ValueError, TypeError):
-            pass
-
-    def at(y, mo, d):
-        return datetime(y, mo, d, hour, minute)
 
     if recurring_lower in ("每天", "daily"):
-        nxt = at(now.year, now.month, now.day) + timedelta(days=1)
-        return nxt
-    if recurring_lower in ("工作日", "weekday", "每个工作日"):
-        nxt = at(now.year, now.month, now.day) + timedelta(days=1)
-        while nxt.weekday() >= 5:
-            nxt += timedelta(days=1)
-        return nxt
-
-    weekday_map = {"一": 0, "二": 1, "三": 2, "四": 3, "五": 4, "六": 5, "日": 6, "天": 6}
-    # 每周X
-    for zh, idx in weekday_map.items():
-        if f"每周{zh}" in recurring_lower:
-            nxt = at(now.year, now.month, now.day) + timedelta(days=1)
-            while nxt.weekday() != idx:
-                nxt += timedelta(days=1)
-            return nxt
-    # 每月X日
-    import re
-    m = re.search(r"每月(\d{1,2})[号日]", recurring_lower)
-    if m:
-        day = int(m.group(1))
-        year, month = now.year, now.month
-        for _ in range(13):
-            month += 1
-            if month > 12:
-                month = 1
-                year += 1
-            last_day = calendar.monthrange(year, month)[1]
-            nxt = at(year, month, min(day, last_day))
-            if nxt > now:
-                return nxt
-        return None
-    return None
+        trigger = CronTrigger(hour=hour, minute=minute)
+    elif recurring_lower in ("每周一", "every monday"):
+        trigger = CronTrigger(day_of_week='mon', hour=hour, minute=minute)
+    elif recurring_lower in ("每周二", "every tuesday"):
+        trigger = CronTrigger(day_of_week='tue', hour=hour, minute=minute)
+    elif recurring_lower in ("每周三", "every wednesday"):
+        trigger = CronTrigger(day_of_week='wed', hour=hour, minute=minute)
+    elif recurring_lower in ("每周四", "every thursday"):
+        trigger = CronTrigger(day_of_week='thu', hour=hour, minute=minute)
+    elif recurring_lower in ("每周五", "every friday"):
+        trigger = CronTrigger(day_of_week='fri', hour=hour, minute=minute)
+    elif recurring_lower in ("每周六", "every saturday"):
+        trigger = CronTrigger(day_of_week='sat', hour=hour, minute=minute)
+    elif recurring_lower in ("每周日", "every sunday"):
+        trigger = CronTrigger(day_of_week='sun', hour=hour, minute=minute)
+    elif "工作日" in recurring_lower or "weekday" in recurring_lower:
+        trigger = CronTrigger(day_of_week='mon-fri', hour=hour, minute=minute)
+    else:
+        print(f"[调度器] 未知循环模式：{recurring}")
+        return
+    
+    new_task = task_manager.add_task(
+        content=content,
+        priority=priority,
+        is_recurring=recurring
+    )
+    
+    if new_task and new_task.get("trigger_time"):
+        schedule_task(new_task["task_id"], new_task["trigger_time"])
 
 
 def schedule_task(task_id: int, trigger_time: str):
-    """安排一次性任务提醒（DateTrigger）。"""
+    """安排任务提醒"""
     try:
         dt = datetime.strptime(trigger_time, "%Y-%m-%d %H:%M")
+        
         if dt <= datetime.now():
             print(f"[调度器] 任务 {task_id} 的时间已过，跳过")
             return
+        
         scheduler.add_job(
             reminder_callback,
             trigger=DateTrigger(run_date=dt),
@@ -504,33 +440,6 @@ async def _fetch_news(topic: str, max_retries: int = 1) -> str:
     return "（无外部新闻源，AI生成内容）"
 
 
-async def _execute_weather_job(task: dict):
-    """天气工具任务：按 meta.location 抓取天气并播报（wttr.in，无需 key）。"""
-    meta = task.get("meta_data") or {}
-    location = meta.get("location") or "北京"
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=12.0) as client:
-            r = await client.get(f"https://wttr.in/{location}?format=3&lang=zh")
-            if r.status_code == 200 and r.text.strip():
-                speech = f"{location}天气：{r.text.strip()}"
-            else:
-                speech = f"获取{location}天气失败，稍后再试。"
-    except Exception as e:
-        print(f"[天气] 获取失败：{e}")
-        speech = f"抱歉，{location}的天气暂时获取不到。"
-    print(f"[天气] {speech}")
-    try:
-        await speak(speech, rate="+0%")
-    except Exception as e:
-        print(f"[天气] 播报出错：{e}")
-    task_manager.add_reminder(task["task_id"], task["content"], speech)
-    _finish_reminder(task)
-    # 循环天气任务：安排下一次
-    if task.get("is_recurring"):
-        schedule_recurring(task["task_id"], task["is_recurring"], task["content"], task["priority"])
-
-
 async def _execute_news_job(task: dict):
     """执行新闻推送任务。"""
     content = task["content"]
@@ -601,7 +510,7 @@ async def _execute_travel_reminder(task: dict):
         print(f"[出行] 语音播报出错：{e}")
     # 记录提醒原文，App 轮询 /api/reminders 显示
     task_manager.add_reminder(task["task_id"], content, speech)
-    _finish_reminder(task)
+    task_manager.mark_reminded(task["task_id"])
 
 
 async def _execute_schedule_reminder(task: dict):
@@ -622,7 +531,7 @@ async def _execute_schedule_reminder(task: dict):
                 print(f"[日程] 语音播报出错：{e}")
             # 记录提醒原文，App 轮询 /api/reminders 显示
             task_manager.add_reminder(task["task_id"], content, remind_text)
-            _finish_reminder(task)
+            task_manager.mark_reminded(task["task_id"])
             remind_hour = _parse_remind_hour(meta.get("remind_time"))
             await _schedule_next_daily_task(task, remind_hour)
             return
@@ -639,7 +548,7 @@ async def _execute_schedule_reminder(task: dict):
 
     if not today_items:
         # 今天没安排，跳过去
-        _finish_reminder(task)
+        task_manager.mark_reminded(task["task_id"])
         return
 
     # 用AI生成友好的提醒
@@ -699,7 +608,7 @@ async def _schedule_next_daily_task(task: dict, hour: int):
         except Exception:
             pass
         # 重置提醒状态，保证明天还能触发（status保持pending即可）
-        _finish_reminder(task)
+        task_manager.mark_reminded(task["task_id"])
         tomorrow = (datetime.now() + timedelta(days=1)).replace(hour=hour, minute=0, second=0, microsecond=0)
         scheduler.add_job(
             reminder_callback,

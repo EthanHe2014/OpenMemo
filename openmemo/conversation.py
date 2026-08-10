@@ -112,39 +112,20 @@ def _create_task_from_ai_task(task: dict, session_id: str) -> dict | None:
     except (TypeError, ValueError):
         duration_minutes = None
     priority = task.get("priority") or "medium"
-    # 槽点：frequency（新字段）优先，兼容旧 recurring
-    frequency = task.get("frequency") or task.get("recurring")
+    recurring = task.get("recurring")
     task_type = task.get("task_type") or "add"
     meta = dict(task.get("meta") or {})
-    # 槽点全部存进 meta，供调度器/App 使用
-    for key in ("start_date", "period", "location", "tool", "frequency"):
-        if task.get(key) is not None and str(task.get(key)).strip():
-            meta[key] = str(task.get(key)).strip()
     # Persist the AI's own reminder words so the execution layer reads AI text
     if task.get("reminder_text"):
         meta["reminder_text"] = task["reminder_text"]
     if task.get("time_human"):
         meta["time_human"] = task["time_human"]
 
-    # 循环任务的第一次触发时间校准：每周X 必须落在匹配的星期
-    if frequency and time_str:
-        weekday_map = {"一": 0, "二": 1, "三": 2, "四": 3, "五": 4, "六": 5, "日": 6, "天": 6}
-        for zh, idx in weekday_map.items():
-            if f"每周{zh}" in frequency:
-                try:
-                    dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M")
-                    while dt.weekday() != idx:
-                        dt += timedelta(days=1)
-                    time_str = dt.strftime("%Y-%m-%d %H:%M")
-                except ValueError:
-                    pass
-                break
-
     db_task = task_manager.add_task(
         content=content,
         trigger_time=time_str,
         priority=priority,
-        is_recurring=frequency,
+        is_recurring=recurring,
         duration_minutes=duration_minutes,
         task_type=task_type,
         meta_data=meta,
