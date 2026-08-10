@@ -100,6 +100,8 @@ struct OpenMemoTask: Identifiable, Codable, Hashable {
     var isPending: Bool { status == "pending" }
     var isCompleted: Bool { status == "completed" }
     var isCancelled: Bool { status == "cancelled" }
+    /// 系统已执行提醒（待办 → 已执行自动切换）
+    var isExecuted: Bool { status == "executed" }
 }
 
 /// 宽松 JSON 值：meta_data 里混合字符串/布尔/数字时用。

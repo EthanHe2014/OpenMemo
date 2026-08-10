@@ -71,6 +71,7 @@ struct TaskListView: View {
                         Menu {
                             Button("全部") { filterStatus = nil }
                             Button("待办") { filterStatus = "pending" }
+                            Button("已执行") { filterStatus = "executed" }
                             Button("已完成") { filterStatus = "completed" }
                             Button("已取消") { filterStatus = "cancelled" }
                         } label: {
@@ -99,16 +100,42 @@ struct TaskRowView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // 优先级标记
-            Circle()
-                .fill(priorityColor)
-                .frame(width: 10, height: 10)
+            // 状态图标：待办=圆点，已执行=✓，已完成=✓✓
+            Group {
+                if task.isExecuted || task.isCompleted {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(task.isExecuted ? .green : .blue)
+                } else {
+                    Circle()
+                        .fill(priorityColor)
+                        .frame(width: 10, height: 10)
+                }
+            }
+            .frame(width: 20)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(task.content)
-                    .strikethrough(task.isCompleted)
-                    .foregroundStyle(task.isCompleted ? .secondary : .primary)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(task.content)
+                        .strikethrough(task.isCompleted)
+                        .foregroundStyle(task.isCompleted ? .secondary : (task.isExecuted ? .secondary : .primary))
+                        .lineLimit(1)
+                    if task.isExecuted {
+                        Text("已执行")
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(.green.opacity(0.15), in: Capsule())
+                            .foregroundStyle(.green)
+                    }
+                    if task.isCompleted {
+                        Text("已完成")
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(.blue.opacity(0.15), in: Capsule())
+                            .foregroundStyle(.blue)
+                    }
+                }
                 if let time = task.triggerTime {
                     Label(time, systemImage: "clock")
                         .font(.caption)
