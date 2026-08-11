@@ -33,8 +33,6 @@ struct MultilineTextField: UIViewRepresentable {
         }
         uiView.onEnter = { onEnter() }
         uiView.onCtrlEnter = { onCtrlEnter() }
-        // 空内容时隐藏光标，避免和 placeholder 重叠
-        uiView.tintColor = text.isEmpty ? .clear : nil
     }
 
     class Coordinator: NSObject, UITextViewDelegate {

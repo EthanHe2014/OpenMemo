@@ -89,11 +89,13 @@ struct ChatView: View {
                     .background(Color(.systemGray6))
                     .clipShape(RoundedRectangle(cornerRadius: 20))
 
-                    // placeholder 用 overlay 显示，绝不写进输入框内容
+                    // placeholder 用 overlay 显示，绝不写进输入框内容；
+                    // 左移 18pt 让光标露在 placeholder 前面（光标在文本起点）
                     if chatVM.inputText.isEmpty {
                         Text("输入消息...")
                             .foregroundStyle(.placeholder)
-                            .padding(.horizontal, 16)
+                            .padding(.leading, 18)
+                            .padding(.trailing, 12)
                             .padding(.vertical, 11)
                             .allowsHitTesting(false)
                     }
