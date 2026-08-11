@@ -84,9 +84,8 @@ struct ChatView: View {
                         onEnter: { chatVM.send() },       // 回车 = 发送
                         onCtrlEnter: { chatVM.inputText += "\n" }  // Ctrl+回车 = 换行
                     )
-                    .frame(minHeight: 40, maxHeight: 110)
+                    .frame(height: 40)
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
                     .background(Color(.systemGray6))
                     .clipShape(RoundedRectangle(cornerRadius: 20))
 
