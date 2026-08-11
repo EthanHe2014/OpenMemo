@@ -4,9 +4,9 @@ import UIKit
 /// 支持「回车=发送，Ctrl+回车=换行」的多行输入框。
 /// SwiftUI 的 TextField(axis: .vertical) 会把 Return 吞掉（插入换行），
 /// onSubmit / onKeyPress 都收不到——所以用 UITextView 的 keyCommands 可靠拦截。
+/// 注意：placeholder 由外部 overlay 显示（绝不能写进 text，否则会被当消息发出去）。
 struct MultilineTextField: UIViewRepresentable {
     @Binding var text: String
-    var placeholder: String = ""
     var onEnter: () -> Void
     var onCtrlEnter: () -> Void
 
@@ -33,14 +33,6 @@ struct MultilineTextField: UIViewRepresentable {
         }
         uiView.onEnter = { onEnter() }
         uiView.onCtrlEnter = { onCtrlEnter() }
-        // placeholder 显示
-        if text.isEmpty {
-            uiView.text = placeholder
-            uiView.textColor = .placeholderText
-        } else if uiView.text == placeholder {
-            uiView.text = ""
-            uiView.textColor = .label
-        }
     }
 
     class Coordinator: NSObject, UITextViewDelegate {
@@ -51,16 +43,7 @@ struct MultilineTextField: UIViewRepresentable {
         }
 
         func textViewDidChange(_ textView: UITextView) {
-            let t = textView.text ?? ""
-            if t == parent.placeholder { return }
-            parent.text = t
-        }
-
-        func textViewDidBeginEditing(_ textView: UITextView) {
-            if textView.text == parent.placeholder {
-                textView.text = ""
-                textView.textColor = .label
-            }
+            parent.text = textView.text ?? ""
         }
     }
 }

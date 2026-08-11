@@ -78,17 +78,27 @@ struct ChatView: View {
         VStack(spacing: 0) {
             Divider()
             HStack(spacing: 8) {
-                MultilineTextField(
-                    text: Bindable(chatVM).inputText,
-                    placeholder: "输入消息...",
-                    onEnter: { chatVM.send() },       // 回车 = 发送
-                    onCtrlEnter: { chatVM.inputText += "\n" }  // Ctrl+回车 = 换行
-                )
-                .frame(minHeight: 40, maxHeight: 110)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
-                .background(Color(.systemGray6))
-                .clipShape(RoundedRectangle(cornerRadius: 20))
+                ZStack(alignment: .topLeading) {
+                    MultilineTextField(
+                        text: Bindable(chatVM).inputText,
+                        onEnter: { chatVM.send() },       // 回车 = 发送
+                        onCtrlEnter: { chatVM.inputText += "\n" }  // Ctrl+回车 = 换行
+                    )
+                    .frame(minHeight: 40, maxHeight: 110)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+                    .background(Color(.systemGray6))
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+
+                    // placeholder 用 overlay 显示，绝不写进输入框内容
+                    if chatVM.inputText.isEmpty {
+                        Text("输入消息...")
+                            .foregroundStyle(.placeholder)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 11)
+                            .allowsHitTesting(false)
+                    }
+                }
 
                 Button {
                     chatVM.send()
