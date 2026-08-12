@@ -213,6 +213,54 @@ async def _apply_ai_action(result: dict, session_id: str):
                 task_manager.complete_task(pending[0]["task_id"])
         return
 
+    if action == "task_deleted":
+        # AI 指名删除任务：按 content 匹配第一个（优先待办）
+        task = result.get("task") or {}
+        content = task.get("content")
+        if content:
+            matches = task_manager.search_tasks(content)
+            if matches:
+                ordered = sorted(matches, key=lambda t: 0 if t["status"] == "pending" else 1)
+                target = ordered[0]
+                task_manager.delete_task(target["task_id"])
+                print(f"[conversation] task_deleted #{target['task_id']} {target['content']}")
+        return
+
+    if action == "task_updated":
+        # AI 指名编辑任务：content 定位，new_content/time/frequency/status 为新值
+        task = result.get("task") or {}
+        content = task.get("content")
+        if content:
+            matches = task_manager.search_tasks(content)
+            if matches:
+                ordered = sorted(matches, key=lambda t: 0 if t["status"] == "pending" else 1)
+                target = ordered[0]
+                tid = target["task_id"]
+                updates = {}
+                if task.get("new_content"):
+                    updates["content"] = str(task["new_content"]).strip()
+                new_time = task.get("time") or task.get("new_time")
+                if new_time:
+                    parsed = _parse_ai_datetime(new_time)
+                    if parsed:
+                        updates["trigger_time"] = parsed
+                freq = task.get("frequency") or task.get("recurring")
+                if freq:
+                    updates["is_recurring"] = str(freq).strip()
+                if task.get("status") in ("pending", "completed", "cancelled", "executed"):
+                    updates["status"] = task["status"]
+                if updates:
+                    task_manager.update_task(tid, **updates)
+                    # 时间变了 → 重新调度
+                    if "trigger_time" in updates and updates["trigger_time"]:
+                        try:
+                            scheduler_mod.scheduler.remove_job(f"task_{tid}")
+                        except Exception:
+                            pass
+                        scheduler_mod.schedule_task(tid, updates["trigger_time"])
+                    print(f"[conversation] task_updated #{tid} -> {updates}")
+        return
+
     # task_listed / chat / collecting: nothing mechanical to do
     return
 
