@@ -2,7 +2,6 @@ import SwiftUI
 
 struct TaskListView: View {
     @Environment(TaskListViewModel.self) private var taskVM
-    @State private var showAddSheet = false
     @State private var filterStatus: String? = nil
 
     var filteredTasks: [OpenMemoTask] {
@@ -10,6 +9,10 @@ struct TaskListView: View {
             return taskVM.tasks.filter { $0.status == status }
         }
         return taskVM.tasks
+    }
+
+    private var pendingCount: Int {
+        taskVM.tasks.filter { $0.isPending }.count
     }
 
     var body: some View {
@@ -36,56 +39,70 @@ struct TaskListView: View {
                     ContentUnavailableView(
                         "暂无任务",
                         systemImage: "checklist",
-                        description: Text("创建一个新任务开始吧")
+                        description: Text("直接跟 OpenMemo 说，它就会帮你记下来")
                     )
                 } else {
                     List {
-                        ForEach(filteredTasks) { task in
-                            NavigationLink(destination: TaskDetailView(task: task)) {
-                                TaskRowView(task: task)
+                        Section {
+                            ForEach(filteredTasks) { task in
+                                NavigationLink(destination: TaskDetailView(task: task)) {
+                                    TaskRowView(task: task) {
+                                        Task { await taskVM.toggleComplete(task) }
+                                    }
+                                }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        Task { await taskVM.delete(task) }
+                                    } label: {
+                                        Label("删除", systemImage: "trash")
+                                    }
+                                }
                             }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button(role: .destructive) {
-                                    Task { await taskVM.delete(task) }
-                                } label: {
-                                    Label("删除", systemImage: "trash")
-                                }
-                                Button {
-                                    Task { await taskVM.toggleComplete(task) }
-                                } label: {
-                                    Label(task.isCompleted ? "重开" : "完成", systemImage: task.isCompleted ? "arrow.uturn.backward" : "checkmark")
-                                }
-                                .tint(task.isCompleted ? .orange : .green)
+                        } header: {
+                            if filterStatus == nil && pendingCount > 0 {
+                                Text("待办 \(pendingCount)")
                             }
                         }
                     }
+                    .listStyle(.insetGrouped)
                     .refreshable {
                         await taskVM.load()
                     }
                 }
             }
-            .navigationTitle("OpenMemo")
+            .navigationTitle("任务")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 4) {
-                        Menu {
-                            Button("全部") { filterStatus = nil }
-                            Button("待办") { filterStatus = "pending" }
-                            Button("已完成") { filterStatus = "completed" }
-                            Button("已取消") { filterStatus = "cancelled" }
+                    Menu {
+                        Button {
+                            filterStatus = nil
                         } label: {
-                            Image(systemName: "line.3.horizontal.decrease.circle")
+                            if filterStatus == nil { Label("全部", systemImage: "checkmark") } else { Text("全部") }
                         }
                         Button {
-                            showAddSheet = true
+                            filterStatus = "pending"
                         } label: {
-                            Image(systemName: "plus")
+                            if filterStatus == "pending" { Label("待办", systemImage: "checkmark") } else { Text("待办") }
                         }
+                        Button {
+                            filterStatus = "executed"
+                        } label: {
+                            if filterStatus == "executed" { Label("已执行", systemImage: "checkmark") } else { Text("已执行") }
+                        }
+                        Button {
+                            filterStatus = "completed"
+                        } label: {
+                            if filterStatus == "completed" { Label("已完成", systemImage: "checkmark") } else { Text("已完成") }
+                        }
+                        Button {
+                            filterStatus = "cancelled"
+                        } label: {
+                            if filterStatus == "cancelled" { Label("已取消", systemImage: "checkmark") } else { Text("已取消") }
+                        }
+                    } label: {
+                        Image(systemName: "line.3.horizontal.decrease.circle")
                     }
                 }
-            }
-            .sheet(isPresented: $showAddSheet) {
-                AddTaskView()
             }
         }
         .task {
@@ -96,51 +113,117 @@ struct TaskListView: View {
 
 struct TaskRowView: View {
     let task: OpenMemoTask
+    var onToggle: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
-            // 优先级标记
-            Circle()
-                .fill(priorityColor)
-                .frame(width: 10, height: 10)
+            // 状态图标
+            statusIcon
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(task.content)
+                        .font(.body)
                         .strikethrough(task.isCompleted)
-                        .foregroundStyle(task.isCompleted ? .secondary : (task.isExecuted ? .secondary : .primary))
+                        .foregroundStyle(task.isCompleted || task.isExecuted ? .secondary : .primary)
                         .lineLimit(1)
                     if task.isExecuted {
-                        Text("已执行")
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 1)
-                            .background(.green.opacity(0.15), in: Capsule())
-                            .foregroundStyle(.green)
+                        badge("已执行", color: .green)
                     }
                     if task.isCompleted {
-                        Text("已完成")
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 1)
-                            .background(.blue.opacity(0.15), in: Capsule())
-                            .foregroundStyle(.blue)
+                        badge("已完成", color: .blue)
+                    }
+                    if task.isCancelled {
+                        badge("已取消", color: .gray)
                     }
                 }
-                if let time = task.triggerTime {
-                    Label(time, systemImage: "clock")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                if let notes = task.notes, !notes.isEmpty {
-                    Text(notes)
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
+
+                HStack(spacing: 10) {
+                    if let time = task.triggerTime {
+                        Label(time, systemImage: "clock")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let rec = task.isRecurring, !rec.isEmpty {
+                        Label(recurringLabel(rec), systemImage: "repeat")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                 }
             }
+
+            Spacer(minLength: 4)
+
+            // 末尾复选框：点击切换 完成/待办
+            Button(action: onToggle) {
+                Image(systemName: checkboxImage)
+                    .font(.title3)
+                    .foregroundStyle(checkboxColor)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(task.isCancelled)
         }
         .opacity(task.isCancelled ? 0.5 : 1)
+        .padding(.vertical, 2)
+    }
+
+    // MARK: - 状态图标
+
+    @ViewBuilder
+    private var statusIcon: some View {
+        Group {
+            if task.isExecuted || task.isCompleted {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(task.isExecuted ? .green : .blue)
+            } else if task.isCancelled {
+                Image(systemName: "circle.slash")
+                    .foregroundStyle(.gray)
+            } else {
+                Circle()
+                    .fill(priorityColor)
+                    .frame(width: 10, height: 10)
+            }
+        }
+        .frame(width: 22)
+    }
+
+    // MARK: - 复选框
+
+    private var checkboxImage: String {
+        if task.isCompleted || task.isExecuted {
+            return "checkmark.circle.fill"
+        }
+        if task.isCancelled {
+            return "circle.dashed"
+        }
+        return "circle"
+    }
+
+    private var checkboxColor: Color {
+        if task.isCompleted || task.isExecuted { return .green }
+        if task.isCancelled { return .gray }
+        return .secondary
+    }
+
+    // MARK: - 辅助
+
+    private func badge(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.caption2)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(color.opacity(0.15), in: Capsule())
+            .foregroundStyle(color)
+    }
+
+    private func recurringLabel(_ rec: String) -> String {
+        switch rec.lowercased() {
+        case "每天", "daily": return "每天"
+        case "工作日", "weekday": return "工作日"
+        default: return rec
+        }
     }
 
     private var priorityColor: Color {
