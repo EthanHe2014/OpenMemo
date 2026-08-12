@@ -4,17 +4,6 @@ struct TaskListView: View {
     @Environment(TaskListViewModel.self) private var taskVM
     @State private var filterStatus: String? = nil
 
-    var filteredTasks: [OpenMemoTask] {
-        if let status = filterStatus {
-            return taskVM.tasks.filter { $0.status == status }
-        }
-        return taskVM.tasks
-    }
-
-    private var pendingCount: Int {
-        taskVM.tasks.filter { $0.isPending }.count
-    }
-
     var body: some View {
         NavigationStack {
             Group {
@@ -42,66 +31,13 @@ struct TaskListView: View {
                         description: Text("直接跟 OpenMemo 说，它就会帮你记下来")
                     )
                 } else {
-                    List {
-                        Section {
-                            ForEach(filteredTasks) { task in
-                                NavigationLink(destination: TaskDetailView(task: task)) {
-                                    TaskRowView(task: task) {
-                                        Task { await taskVM.toggleComplete(task) }
-                                    }
-                                }
-                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    Button(role: .destructive) {
-                                        Task { await taskVM.delete(task) }
-                                    } label: {
-                                        Label("删除", systemImage: "trash")
-                                    }
-                                }
-                            }
-                        } header: {
-                            if filterStatus == nil && pendingCount > 0 {
-                                Text("待办 \(pendingCount)")
-                            }
-                        }
-                    }
-                    .listStyle(.insetGrouped)
-                    .refreshable {
-                        await taskVM.load()
-                    }
+                    taskList
                 }
             }
             .navigationTitle("任务")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button {
-                            filterStatus = nil
-                        } label: {
-                            if filterStatus == nil { Label("全部", systemImage: "checkmark") } else { Text("全部") }
-                        }
-                        Button {
-                            filterStatus = "pending"
-                        } label: {
-                            if filterStatus == "pending" { Label("待办", systemImage: "checkmark") } else { Text("待办") }
-                        }
-                        Button {
-                            filterStatus = "executed"
-                        } label: {
-                            if filterStatus == "executed" { Label("已执行", systemImage: "checkmark") } else { Text("已执行") }
-                        }
-                        Button {
-                            filterStatus = "completed"
-                        } label: {
-                            if filterStatus == "completed" { Label("已完成", systemImage: "checkmark") } else { Text("已完成") }
-                        }
-                        Button {
-                            filterStatus = "cancelled"
-                        } label: {
-                            if filterStatus == "cancelled" { Label("已取消", systemImage: "checkmark") } else { Text("已取消") }
-                        }
-                    } label: {
-                        Image(systemName: "line.3.horizontal.decrease.circle")
-                    }
+                    filterMenu
                 }
             }
         }
@@ -109,7 +45,188 @@ struct TaskListView: View {
             await taskVM.load()
         }
     }
+
+    // MARK: - 分组列表
+
+    private var taskList: some View {
+        List {
+            // 顶部统计卡片
+            Section {
+                summaryCard
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+            }
+
+            if filterStatus == nil {
+                statusSection(title: "待办", status: "pending", icon: "clock", color: .orange)
+                statusSection(title: "已执行", status: "executed", icon: "checkmark.circle", color: .green)
+                statusSection(title: "已完成", status: "completed", icon: "checkmark.circle.fill", color: .blue)
+                statusSection(title: "已取消", status: "cancelled", icon: "xmark.circle", color: .gray)
+            } else {
+                let tasks = taskVM.tasks.filter { $0.status == filterStatus }
+                if tasks.isEmpty {
+                    ContentUnavailableView("没有这类任务", systemImage: "tray", description: Text("换个筛选看看"))
+                } else {
+                    Section {
+                        ForEach(tasks) { task in
+                            row(for: task)
+                        }
+                    }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .refreshable {
+            await taskVM.load()
+        }
+    }
+
+    private func statusSection(title: String, status: String, icon: String, color: Color) -> some View {
+        let tasks = taskVM.tasks.filter { $0.status == status }
+        if tasks.isEmpty { return AnyView(EmptyView()) }
+        return AnyView(
+            Section {
+                ForEach(tasks) { task in
+                    row(for: task)
+                }
+            } header: {
+                HStack(spacing: 6) {
+                    Image(systemName: icon)
+                        .foregroundStyle(color)
+                    Text("\(title) · \(tasks.count)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        )
+    }
+
+    private func row(for task: OpenMemoTask) -> some View {
+        NavigationLink(destination: TaskDetailView(task: task)) {
+            TaskRowView(task: task) {
+                Task { await taskVM.toggleComplete(task) }
+            }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button(role: .destructive) {
+                Task { await taskVM.delete(task) }
+            } label: {
+                Label("删除", systemImage: "trash")
+            }
+        }
+    }
+
+    // MARK: - 统计卡片
+
+    private var summaryCard: some View {
+        let pending = taskVM.tasks.filter(\.isPending).count
+        let executed = taskVM.tasks.filter(\.isExecuted).count
+        let completed = taskVM.tasks.filter(\.isCompleted).count
+        let today = taskVM.tasks.filter { task in
+            guard let t = task.triggerTime, let d = TaskListHelpers.parseTime(t) else { return false }
+            return Calendar.current.isDateInToday(d) && task.isPending
+        }.count
+
+        return HStack(spacing: 0) {
+            statBlock(value: pending, label: "待办", color: .orange, icon: "clock")
+            statDivider
+            statBlock(value: today, label: "今日提醒", color: .red, icon: "bell")
+            statDivider
+            statBlock(value: executed, label: "已执行", color: .green, icon: "checkmark.circle")
+            statDivider
+            statBlock(value: completed, label: "已完成", color: .blue, icon: "checkmark.circle.fill")
+        }
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+                .shadow(color: .black.opacity(0.06), radius: 6, y: 2)
+        )
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+    }
+
+    private var statDivider: some View {
+        Rectangle()
+            .fill(Color(.separator).opacity(0.5))
+            .frame(width: 0.5, height: 30)
+    }
+
+    private func statBlock(value: Int, label: String, color: Color, icon: String) -> some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.caption)
+                    .foregroundStyle(color)
+                Text("\(value)")
+                    .font(.title3.bold())
+                    .foregroundStyle(.primary)
+            }
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - 筛选菜单
+
+    private var filterMenu: some View {
+        Menu {
+            filterButton("全部", status: nil)
+            filterButton("待办", status: "pending")
+            filterButton("已执行", status: "executed")
+            filterButton("已完成", status: "completed")
+            filterButton("已取消", status: "cancelled")
+        } label: {
+            Image(systemName: filterStatus == nil ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+        }
+    }
+
+    private func filterButton(_ title: String, status: String?) -> some View {
+        Button {
+            filterStatus = status
+        } label: {
+            if filterStatus == status {
+                Label(title, systemImage: "checkmark")
+            } else {
+                Text(title)
+            }
+        }
+    }
 }
+
+// MARK: - 时间解析辅助
+
+enum TaskListHelpers {
+    static func parseTime(_ s: String) -> Date? {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm"
+        f.locale = Locale(identifier: "zh_CN")
+        return f.date(from: s)
+    }
+
+    /// 相对时间："今天 15:00" / "明天 08:00" / "周三 09:00" / "8月20日 10:00"
+    static func relativeTime(_ s: String) -> String {
+        guard let d = parseTime(s) else { return s }
+        let cal = Calendar.current
+        let hm = String(s.suffix(5))
+        let weekdays = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
+        if cal.isDateInToday(d) { return "今天 \(hm)" }
+        if cal.isDateInTomorrow(d) { return "明天 \(hm)" }
+        if cal.isDateInYesterday(d) { return "昨天 \(hm)" }
+        let dayDiff = cal.dateComponents([.day], from: cal.startOfDay(for: Date()), to: cal.startOfDay(for: d)).day ?? 99
+        if dayDiff > 0 && dayDiff <= 6 {
+            let w = cal.component(.weekday, from: d)
+            return "\(weekdays[w - 1]) \(hm)"
+        }
+        let m = cal.component(.month, from: d)
+        let day = cal.component(.day, from: d)
+        return "\(m)月\(day)日 \(hm)"
+    }
+}
+
+// MARK: - 任务行
 
 struct TaskRowView: View {
     let task: OpenMemoTask
@@ -117,13 +234,12 @@ struct TaskRowView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // 状态图标
             statusIcon
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(task.content)
-                        .font(.body)
+                        .font(.body.weight(task.isPending ? .medium : .regular))
                         .strikethrough(task.isCompleted)
                         .foregroundStyle(task.isCompleted || task.isExecuted ? .secondary : .primary)
                         .lineLimit(1)
@@ -140,9 +256,9 @@ struct TaskRowView: View {
 
                 HStack(spacing: 10) {
                     if let time = task.triggerTime {
-                        Label(time, systemImage: "clock")
+                        Label(TaskListHelpers.relativeTime(time), systemImage: "clock")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(timeColor(time))
                     }
                     if let rec = task.isRecurring, !rec.isEmpty {
                         Label(recurringLabel(rec), systemImage: "repeat")
@@ -154,7 +270,6 @@ struct TaskRowView: View {
 
             Spacer(minLength: 4)
 
-            // 末尾复选框：点击切换 完成/待办
             Button(action: onToggle) {
                 Image(systemName: checkboxImage)
                     .font(.title3)
@@ -166,16 +281,22 @@ struct TaskRowView: View {
             .disabled(task.isCancelled)
         }
         .opacity(task.isCancelled ? 0.5 : 1)
-        .padding(.vertical, 2)
+        .padding(.vertical, 3)
     }
 
-    // MARK: - 状态图标
+    private func timeColor(_ time: String) -> Color {
+        guard task.isPending, let d = TaskListHelpers.parseTime(time) else { return .secondary }
+        if d < Date() { return .red.opacity(0.8) }   // 已过期
+        if Calendar.current.isDateInToday(d) { return .primary.opacity(0.7) }
+        return .secondary
+    }
 
     @ViewBuilder
     private var statusIcon: some View {
         Group {
             if task.isExecuted || task.isCompleted {
                 Image(systemName: "checkmark.circle.fill")
+                    .font(.body)
                     .foregroundStyle(task.isExecuted ? .green : .blue)
             } else if task.isCancelled {
                 Image(systemName: "circle.slash")
@@ -186,18 +307,12 @@ struct TaskRowView: View {
                     .frame(width: 10, height: 10)
             }
         }
-        .frame(width: 22)
+        .frame(width: 24)
     }
 
-    // MARK: - 复选框
-
     private var checkboxImage: String {
-        if task.isCompleted || task.isExecuted {
-            return "checkmark.circle.fill"
-        }
-        if task.isCancelled {
-            return "circle.dashed"
-        }
+        if task.isCompleted || task.isExecuted { return "checkmark.circle.fill" }
+        if task.isCancelled { return "circle.dashed" }
         return "circle"
     }
 
@@ -206,8 +321,6 @@ struct TaskRowView: View {
         if task.isCancelled { return .gray }
         return .secondary
     }
-
-    // MARK: - 辅助
 
     private func badge(_ text: String, color: Color) -> some View {
         Text(text)
