@@ -3,6 +3,13 @@ import SwiftUI
 struct ChatView: View {
     @Environment(ChatViewModel.self) private var chatVM
 
+    private let suggestions = [
+        "明天下午3点开项目会",
+        "每天早上8点提醒我起床",
+        "帮妈妈买牛奶",
+        "每周二晚上7点提醒我去打球",
+    ]
+
     var body: some View {
         NavigationStack {
             ZStack(alignment: .leading) {
@@ -34,33 +41,28 @@ struct ChatView: View {
             }
         }
         .task {
-            // 进入时（含应用启动）：新建聊天 + 加载侧边栏。
             await chatVM.startFresh()
         }
     }
 
+    // MARK: - 消息列表
+
     private var messageList: some View {
         ScrollViewReader { scroll in
             ScrollView {
-                LazyVStack(spacing: 12) {
+                LazyVStack(spacing: 14) {
                     if chatVM.messages.isEmpty {
-                        VStack(spacing: 16) {
-                            Image(systemName: "bubble.left.and.bubble.right")
-                                .font(.system(size: 48))
-                                .foregroundStyle(.secondary)
-                            Text("和 OpenMemo 对话")
-                                .font(.headline)
-                            Text("每人每次登录都会开启全新的对话，旧对话在左侧栏里可以回看或删除。")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 40)
-                        }
-                        .padding(.top, 60)
+                        welcomeCard
+                            .padding(.top, 30)
                     } else {
                         ForEach(chatVM.messages) { msg in
                             ChatBubbleView(message: msg)
                                 .id(msg.id)
+                        }
+                        // 输入中提示
+                        if chatVM.isSending {
+                            TypingBubbleView()
+                                .id("typing")
                         }
                     }
                 }
@@ -71,8 +73,93 @@ struct ChatView: View {
                     withAnimation { scroll.scrollTo(last.id) }
                 }
             }
+            .onChange(of: chatVM.isSending) { _, sending in
+                if sending {
+                    withAnimation { scroll.scrollTo("typing", anchor: .bottom) }
+                }
+            }
+        }
+        .scrollDismissesKeyboard(.interactively)
+    }
+
+    // MARK: - 欢迎卡片
+
+    private var welcomeCard: some View {
+        VStack(spacing: 18) {
+            // Logo
+            ZStack {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(
+                        LinearGradient(colors: [.orange, .pink], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    )
+                    .frame(width: 76, height: 76)
+                Image(systemName: "sparkles")
+                    .font(.system(size: 34))
+                    .foregroundStyle(.white)
+            }
+            .shadow(color: .orange.opacity(0.3), radius: 10, y: 4)
+
+            VStack(spacing: 6) {
+                Text("我是 OpenMemo")
+                    .font(.title2.bold())
+                Text("说一句话，我来帮你记任务、设提醒、安排日程")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 30)
+            }
+
+            // 能力标签
+            HStack(spacing: 8) {
+                chip("📝 记任务")
+                chip("⏰ 循环提醒")
+                chip("✈️ 出行")
+                chip("📰 新闻")
+            }
+
+            // 示例
+            VStack(alignment: .leading, spacing: 10) {
+                Text("试试这样说")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 4)
+
+                ForEach(suggestions, id: \.self) { s in
+                    Button {
+                        chatVM.inputText = s
+                        chatVM.send()
+                    } label: {
+                        HStack {
+                            Text(s)
+                                .font(.subheadline)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Image(systemName: "arrow.up")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 11)
+                        .background(Color(.secondarySystemGroupedBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 20)
         }
     }
+
+    private func chip(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Color(.secondarySystemGroupedBackground), in: Capsule())
+            .foregroundStyle(.secondary)
+    }
+
+    // MARK: - 输入栏
 
     private var inputBar: some View {
         VStack(spacing: 0) {
@@ -89,8 +176,6 @@ struct ChatView: View {
                     .background(Color(.systemGray6))
                     .clipShape(RoundedRectangle(cornerRadius: 20))
 
-                    // placeholder 用 overlay 显示，绝不写进输入框内容；
-                    // 左移 18pt 让光标露在 placeholder 前面（光标在文本起点）
                     if chatVM.inputText.isEmpty {
                         Text("输入消息...")
                             .foregroundStyle(.placeholder)
@@ -236,24 +321,85 @@ struct SidebarView: View {
     }
 }
 
-// MARK: - 气泡
+// MARK: - 消息气泡
 
 struct ChatBubbleView: View {
     let message: ChatMessage
 
     var body: some View {
-        HStack {
-            if message.role == .user { Spacer(minLength: 60) }
+        HStack(alignment: .bottom, spacing: 8) {
+            if message.role == .assistant {
+                assistantAvatar
+            }
+
+            if message.role == .user {
+                Spacer(minLength: 60)
+            }
+
             Text(message.text)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(message.role == .user ? Color.accentColor : Color(.systemGray5))
                 .foregroundStyle(message.role == .user ? .white : .primary)
-                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .textSelection(.enabled)
+
             if message.role == .assistant {
                 Spacer(minLength: 60)
             }
         }
+    }
+
+    private var assistantAvatar: some View {
+        ZStack {
+            Circle()
+                .fill(LinearGradient(colors: [.orange, .pink], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(width: 30, height: 30)
+            Image(systemName: "sparkles")
+                .font(.system(size: 13))
+                .foregroundStyle(.white)
+        }
+    }
+}
+
+// MARK: - 输入中气泡
+
+struct TypingBubbleView: View {
+    @State private var animating = false
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(LinearGradient(colors: [.orange, .pink], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: 30, height: 30)
+                Image(systemName: "sparkles")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white)
+            }
+
+            HStack(spacing: 5) {
+                ForEach(0..<3, id: \.self) { i in
+                    Circle()
+                        .fill(.secondary.opacity(0.6))
+                        .frame(width: 7, height: 7)
+                        .scaleEffect(animating ? 1 : 0.5)
+                        .opacity(animating ? 1 : 0.4)
+                        .animation(
+                            .easeInOut(duration: 0.6)
+                                .repeatForever(autoreverses: true)
+                                .delay(Double(i) * 0.15),
+                            value: animating
+                        )
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Color(.systemGray5))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+            Spacer(minLength: 60)
+        }
+        .onAppear { animating = true }
     }
 }
