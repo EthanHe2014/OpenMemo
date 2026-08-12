@@ -55,9 +55,9 @@ struct TaskDetailView: View {
             Section("优先级") {
                 if isEditing {
                     Picker("优先级", selection: $priority) {
-                        Text("高").tag("high")
-                        Text("中").tag("medium")
-                        Text("低").tag("low")
+                        Label("高", systemImage: "flame.fill").tag("high")
+                        Label("中", systemImage: "equal.circle").tag("medium")
+                        Label("低", systemImage: "leaf").tag("low")
                     }
                     .pickerStyle(.segmented)
                 } else {
@@ -65,9 +65,9 @@ struct TaskDetailView: View {
                         Text(task.priority)
                         Spacer()
                         switch task.priority {
-                        case "high": Text("高")
+                        case "high": Label("高", systemImage: "flame.fill")
                         case "medium": Text("中")
-                        case "low": Text("低")
+                        case "low": Label("低", systemImage: "leaf")
                         default: EmptyView()
                         }
                     }

@@ -31,9 +31,9 @@ struct AddTaskView: View {
 
                 Section("优先级") {
                     Picker("优先级", selection: $priority) {
-                        Text("高").tag("high")
-                        Text("中").tag("medium")
-                        Text("低").tag("low")
+                        Label("高", systemImage: "flame.fill").tag("high")
+                        Label("中", systemImage: "equal.circle").tag("medium")
+                        Label("低", systemImage: "leaf").tag("low")
                     }
                     .pickerStyle(.segmented)
                 }

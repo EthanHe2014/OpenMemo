@@ -91,13 +91,13 @@ struct SettingsView: View {
 
                 // 使用提示
                 Section("使用提示") {
-                    Label("直接说 \"明天下午3点开会\"，帮你记任务", systemImage: "1.circle")
+                    Label("直接说 \"明天下午3点开会\"，帮你记任务", systemImage: "note.text")
                         .font(.caption)
-                    Label("说 \"每天早上8点提醒我\"，建立循环提醒", systemImage: "2.circle")
+                    Label("说 \"每天早上8点提醒我\"，建立循环提醒", systemImage: "repeat")
                         .font(.caption)
-                    Label("说 \"牛奶买好了\"，完成任务", systemImage: "3.circle")
+                    Label("说 \"牛奶买好了\"，完成任务", systemImage: "checkmark.circle")
                         .font(.caption)
-                    Label("回车发送 · Ctrl+回车换行", systemImage: "4.circle")
+                    Label("回车发送 · Ctrl+回车换行", systemImage: "return")
                         .font(.caption)
                 }
 
