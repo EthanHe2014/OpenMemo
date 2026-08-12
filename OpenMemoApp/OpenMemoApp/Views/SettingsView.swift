@@ -4,6 +4,7 @@ struct SettingsView: View {
     @State private var serverURL = OpenMemoAPI.shared.baseURL
     @State private var saved = false
     @State private var healthStatus: String? = nil
+    @State private var isConnected: Bool? = nil
     @State private var checking = false
     @State private var backendModel: String? = nil
     @State private var lastChecked = false
@@ -32,11 +33,11 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
-                        if let status = healthStatus {
-                            Label(status.hasPrefix("✅") ? "已连接" : "未连接",
-                                  systemImage: status.hasPrefix("✅") ? "circle.fill" : "circle")
+                        if let connected = isConnected {
+                            Label(connected ? "已连接" : "未连接",
+                                  systemImage: connected ? "circle.fill" : "circle")
                                 .font(.caption)
-                                .foregroundStyle(status.hasPrefix("✅") ? .green : .red)
+                                .foregroundStyle(connected ? .green : .red)
                         }
                     }
                     .padding(.vertical, 4)
@@ -73,7 +74,7 @@ struct SettingsView: View {
                         } else if let status = healthStatus, lastChecked {
                             Text(status)
                                 .font(.caption)
-                                .foregroundStyle(status.hasPrefix("✅") ? .green : (status.hasPrefix("⚠️") ? .orange : .red))
+                                .foregroundStyle(statusColor)
                         }
                     }
                 }
@@ -114,6 +115,11 @@ struct SettingsView: View {
         }
     }
 
+    private var statusColor: Color {
+        guard let connected = isConnected else { return .secondary }
+        return connected ? .green : .red
+    }
+
     private func check() {
         checking = true
         healthStatus = nil
@@ -123,14 +129,16 @@ struct SettingsView: View {
                 let isOK = h.status == "running"
                 await MainActor.run {
                     backendModel = h.model
-                    healthStatus = isOK ? "✅ 已连接" : "⚠️ 状态: \(h.status)"
+                    isConnected = isOK
+                    healthStatus = isOK ? "已连接" : "状态: \(h.status)"
                     checking = false
                     lastChecked = true
                 }
             } catch {
                 await MainActor.run {
                     backendModel = nil
-                    healthStatus = "❌ 连接失败"
+                    isConnected = false
+                    healthStatus = "连接失败"
                     checking = false
                     lastChecked = true
                 }

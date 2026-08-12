@@ -33,7 +33,9 @@ struct TaskDetailView: View {
                 HStack {
                     Text("状态")
                     Spacer()
-                    Text(task.isCompleted ? "✅ 已完成" : task.isCancelled ? "❌ 已取消" : "⏳ 待办")
+                    Label(task.isCompleted ? "已完成" : task.isCancelled ? "已取消" : "待办",
+      systemImage: task.isCompleted ? "checkmark.circle.fill" : task.isCancelled ? "xmark.circle" : "clock")
+    .foregroundStyle(task.isCompleted ? .green : task.isCancelled ? .gray : .secondary)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -53,7 +55,7 @@ struct TaskDetailView: View {
             Section("优先级") {
                 if isEditing {
                     Picker("优先级", selection: $priority) {
-                        Text("高 🔴").tag("high")
+                        Text("高").tag("high")
                         Text("中").tag("medium")
                         Text("低").tag("low")
                     }
@@ -63,9 +65,9 @@ struct TaskDetailView: View {
                         Text(task.priority)
                         Spacer()
                         switch task.priority {
-                        case "high": Text("高 🔴")
+                        case "high": Text("高")
                         case "medium": Text("中")
-                        case "low": Text("低 🟢")
+                        case "low": Text("低")
                         default: EmptyView()
                         }
                     }

@@ -74,10 +74,10 @@ struct OpenMemoTask: Identifiable, Codable, Hashable {
     /// 智能任务类型标签（news/travel/schedule/normal）
     var typeLabel: String {
         switch taskType {
-        case "news": return "📰 每日推送"
-        case "travel": return "✈️ 出行"
-        case "schedule": return "📅 日程"
-        default: return "📝 普通"
+        case "news": return "每日推送"
+        case "travel": return "出行"
+        case "schedule": return "日程"
+        default: return "普通"
         }
     }
 

@@ -111,10 +111,10 @@ struct ChatView: View {
 
             // 能力标签
             HStack(spacing: 8) {
-                chip("📝 记任务")
-                chip("⏰ 循环提醒")
-                chip("✈️ 出行")
-                chip("📰 新闻")
+                chip(icon: "note.text", text: "记任务")
+                chip(icon: "clock", text: "循环提醒")
+                chip(icon: "airplane", text: "出行")
+                chip(icon: "newspaper", text: "新闻")
             }
 
             // 示例
@@ -150,8 +150,8 @@ struct ChatView: View {
         }
     }
 
-    private func chip(_ text: String) -> some View {
-        Text(text)
+    private func chip(icon: String, text: String) -> some View {
+        Label(text, systemImage: icon)
             .font(.caption)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)

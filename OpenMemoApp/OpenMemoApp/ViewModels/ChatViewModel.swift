@@ -124,7 +124,7 @@ final class ChatViewModel {
                 // 保持侧边栏最新，让新建/更新的会话出现在顶部。
                 await self.refreshSessions()
             } catch {
-                self.messages.append(ChatMessage(role: .assistant, text: "⚠️ 连接失败：\(error.localizedDescription)"))
+                self.messages.append(ChatMessage(role: .assistant, text: "连接失败：\(error.localizedDescription)"))
             }
         }
     }
