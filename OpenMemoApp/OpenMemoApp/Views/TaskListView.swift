@@ -59,8 +59,7 @@ struct TaskListView: View {
 
             if filterStatus == nil {
                 statusSection(title: "待办", status: "pending", icon: "clock", color: .orange)
-                statusSection(title: "已执行", status: "executed", icon: "checkmark.circle", color: .green)
-                statusSection(title: "已完成", status: "completed", icon: "checkmark.circle.fill", color: .blue)
+                statusSection(title: "已完成", status: "completed", icon: "checkmark.circle.fill", color: .green)
                 statusSection(title: "已取消", status: "cancelled", icon: "xmark.circle", color: .gray)
             } else {
                 let tasks = taskVM.tasks.filter { $0.status == filterStatus }
@@ -120,7 +119,6 @@ struct TaskListView: View {
 
     private var summaryCard: some View {
         let pending = taskVM.tasks.filter(\.isPending).count
-        let executed = taskVM.tasks.filter(\.isExecuted).count
         let completed = taskVM.tasks.filter(\.isCompleted).count
         let today = taskVM.tasks.filter { task in
             guard let t = task.triggerTime, let d = TaskListHelpers.parseTime(t) else { return false }
@@ -132,9 +130,7 @@ struct TaskListView: View {
             statDivider
             statBlock(value: today, label: "今日提醒", color: .red, icon: "bell")
             statDivider
-            statBlock(value: executed, label: "已执行", color: .green, icon: "checkmark.circle")
-            statDivider
-            statBlock(value: completed, label: "已完成", color: .blue, icon: "checkmark.circle.fill")
+            statBlock(value: completed, label: "已完成", color: .green, icon: "checkmark.circle.fill")
         }
         .padding(.vertical, 14)
         .background(
@@ -175,7 +171,6 @@ struct TaskListView: View {
         Menu {
             filterButton("全部", status: nil)
             filterButton("待办", status: "pending")
-            filterButton("已执行", status: "executed")
             filterButton("已完成", status: "completed")
             filterButton("已取消", status: "cancelled")
         } label: {
@@ -241,13 +236,10 @@ struct TaskRowView: View {
                     Text(task.content)
                         .font(.body.weight(task.isPending ? .medium : .regular))
                         .strikethrough(task.isCompleted)
-                        .foregroundStyle(task.isCompleted || task.isExecuted ? .secondary : .primary)
+                        .foregroundStyle(task.isCompleted ? .secondary : .primary)
                         .lineLimit(1)
-                    if task.isExecuted {
-                        badge("已执行", color: .green)
-                    }
                     if task.isCompleted {
-                        badge("已完成", color: .blue)
+                        badge("已完成", color: .green)
                     }
                     if task.isCancelled {
                         badge("已取消", color: .gray)
@@ -294,10 +286,10 @@ struct TaskRowView: View {
     @ViewBuilder
     private var statusIcon: some View {
         Group {
-            if task.isExecuted || task.isCompleted {
+            if task.isCompleted {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.body)
-                    .foregroundStyle(task.isExecuted ? .green : .blue)
+                    .foregroundStyle(.green)
             } else if task.isCancelled {
                 Image(systemName: "circle.slash")
                     .foregroundStyle(.gray)
@@ -311,13 +303,13 @@ struct TaskRowView: View {
     }
 
     private var checkboxImage: String {
-        if task.isCompleted || task.isExecuted { return "checkmark.circle.fill" }
+        if task.isCompleted { return "checkmark.circle.fill" }
         if task.isCancelled { return "circle.dashed" }
         return "circle"
     }
 
     private var checkboxColor: Color {
-        if task.isCompleted || task.isExecuted { return .green }
+        if task.isCompleted { return .green }
         if task.isCancelled { return .gray }
         return .secondary
     }

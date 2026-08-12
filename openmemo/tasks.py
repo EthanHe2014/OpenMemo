@@ -88,6 +88,13 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # Column already exists
 
+    # 迁移：旧版 executed 状态统一为 completed（只保留 待办/已完成/已取消 三种）
+    try:
+        cursor.execute("UPDATE tasks SET status='completed' WHERE status='executed'")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
+
     # 提醒送达记录：每次提醒触发时，把 AI 生成的提醒原文存下来，App 轮询后显示
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS reminders (

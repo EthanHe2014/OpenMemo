@@ -247,7 +247,7 @@ async def _apply_ai_action(result: dict, session_id: str):
                 freq = task.get("frequency") or task.get("recurring")
                 if freq:
                     updates["is_recurring"] = str(freq).strip()
-                if task.get("status") in ("pending", "completed", "cancelled", "executed"):
+                if task.get("status") in ("pending", "completed", "cancelled"):
                     updates["status"] = task["status"]
                 if updates:
                     task_manager.update_task(tid, **updates)

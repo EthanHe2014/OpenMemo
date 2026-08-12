@@ -122,12 +122,12 @@ async def _generate_reminder_message(content: str, priority: str) -> dict:
     return {"speech": text}
 
 def _finish_reminder(task: dict):
-    """提醒触发收尾：标记已提醒；一次性任务 → status=executed（App 显示"已执行"），
+    """提醒触发收尾：标记已提醒；一次性任务 → status=completed（已完成），
     循环任务保持 pending 等下一次触发。"""
     task_id = task["task_id"]
     task_manager.mark_reminded(task_id)
     if not task.get("is_recurring"):
-        task_manager.update_task(task_id, status="executed")
+        task_manager.update_task(task_id, status="completed")
 
 
 async def reminder_callback(task_id: int):
@@ -189,8 +189,8 @@ def schedule_recurring(task_id: int, recurring: str, content: str, priority: str
     # 下一次触发时间
     next_dt = _next_occurrence(task, recurring)
     if next_dt is None:
-        # 算不出下一次 → 任务完结（已执行）
-        task_manager.update_task(task_id, status="executed")
+        # 算不出下一次 → 任务完结（已完成）
+        task_manager.update_task(task_id, status="completed")
         return
 
     # 执行周期（period 截止）：超过截止日期就不再排
@@ -200,7 +200,7 @@ def schedule_recurring(task_id: int, recurring: str, content: str, priority: str
             deadline = datetime.strptime(str(period)[:10], "%Y-%m-%d")
             if next_dt.date() > deadline:
                 print(f"[调度器] 任务 {task_id} 已过执行周期（{period}），完结")
-                task_manager.update_task(task_id, status="executed")
+                task_manager.update_task(task_id, status="completed")
                 return
         except (ValueError, TypeError):
             pass
