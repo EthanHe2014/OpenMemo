@@ -105,10 +105,28 @@ struct TaskRowView: View {
                 .frame(width: 10, height: 10)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(task.content)
-                    .strikethrough(task.isCompleted)
-                    .foregroundStyle(task.isCompleted ? .secondary : .primary)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(task.content)
+                        .strikethrough(task.isCompleted)
+                        .foregroundStyle(task.isCompleted ? .secondary : (task.isExecuted ? .secondary : .primary))
+                        .lineLimit(1)
+                    if task.isExecuted {
+                        Text("已执行")
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(.green.opacity(0.15), in: Capsule())
+                            .foregroundStyle(.green)
+                    }
+                    if task.isCompleted {
+                        Text("已完成")
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(.blue.opacity(0.15), in: Capsule())
+                            .foregroundStyle(.blue)
+                    }
+                }
                 if let time = task.triggerTime {
                     Label(time, systemImage: "clock")
                         .font(.caption)
