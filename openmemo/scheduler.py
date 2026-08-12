@@ -336,10 +336,43 @@ def start_scheduler():
     load_existing_tasks()
     scheduler.start()
     print("[调度器] 已启动")
+    start_watchdog()
+
+
+def start_watchdog():
+    """对话 vs 任务库 一致性看护：每 60 秒扫一次，发现问题弹 macOS 通知。"""
+    from apscheduler.triggers.interval import IntervalTrigger
+    from .watchdog import run_watchdog
+    from .voice import show_notification
+
+    def watchdog_tick():
+        try:
+            problems = run_watchdog(hours=24)
+            for p in problems:
+                print(f"[看护] {p}")
+                try:
+                    show_notification("OpenMemo 看护", p)
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"[看护] 运行出错：{e}")
+
+    scheduler.add_job(
+        watchdog_tick,
+        IntervalTrigger(seconds=60),
+        id="watchdog",
+        replace_existing=True,
+        max_instances=1,
+    )
+    print("[看护] 已启动（每 60 秒检查对话 vs 任务库）")
 
 
 def stop_scheduler():
     """停止调度器"""
+    try:
+        scheduler.remove_job("watchdog")
+    except Exception:
+        pass
     scheduler.shutdown()
     print("[调度器] 已停止")
 

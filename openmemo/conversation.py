@@ -106,13 +106,21 @@ def _create_task_from_ai_task(task: dict, session_id: str) -> dict | None:
         return None
 
     time_str = _parse_ai_datetime(task.get("time"))
+    # 看护：一次性任务给了过去的时间 → 拒绝（避免静默永不触发）
+    recurring = task.get("recurring")
+    if time_str and not recurring:
+        try:
+            if datetime.strptime(time_str, "%Y-%m-%d %H:%M") < datetime.now() - timedelta(minutes=1):
+                print(f"[conversation] AI 给了过去的时间 {time_str}，拒绝创建『{content}』")
+                return None
+        except ValueError:
+            pass
     duration = task.get("duration_minutes")
     try:
         duration_minutes = int(duration) if duration else None
     except (TypeError, ValueError):
         duration_minutes = None
     priority = task.get("priority") or "medium"
-    recurring = task.get("recurring")
     task_type = task.get("task_type") or "add"
     meta = dict(task.get("meta") or {})
     # Persist the AI's own reminder words so the execution layer reads AI text
@@ -168,14 +176,26 @@ async def _apply_ai_action(result: dict, session_id: str):
 
     if action == "task_added":
         created = 0
+        seen = set()  # 去重：同一轮 AI 回复里 内容+时间 相同的任务只建一个
+
+        def create_one(t: dict):
+            nonlocal created
+            key = (t.get("content"), t.get("time"))
+            if key in seen:
+                print(f"[conversation] 跳过重复任务：{t.get('content')} @ {t.get('time')}")
+                return
+            seen.add(key)
+            if _create_task_from_ai_task(t, session_id):
+                created += 1
+
         # Single task
         if result.get("task"):
-            created += 1 if _create_task_from_ai_task(result.get("task"), session_id) else 0
+            create_one(result.get("task"))
         # Multiple tasks (AI 一次建多个提醒)
         multi = result.get("tasks")
         if isinstance(multi, list):
             for one in multi:
-                created += 1 if _create_task_from_ai_task(one, session_id) else 0
+                create_one(one)
         # 安全网：模型偶尔把任务放在 appointment 里却标成 task_added
         if created == 0 and result.get("appointment"):
             await _schedule_appointment(result.get("appointment"), session_id)
