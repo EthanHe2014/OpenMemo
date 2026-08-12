@@ -53,6 +53,7 @@ def seed_past_time_task():
         f"{BASE}/api/tasks",
         json={"content": "看护测试-过期时间", "trigger_time": past, "priority": "medium"},
         timeout=10,
+        trust_env=False,
     ).json()
     print(f"  ② 创建过去时间任务 #{r['task']['task_id']} @ {past}")
     return r["task"]["task_id"]
@@ -67,6 +68,7 @@ def seed_duplicates():
             f"{BASE}/api/tasks",
             json={"content": "看护测试-重复", "trigger_time": future, "priority": "medium"},
             timeout=10,
+            trust_env=False,
         ).json()
         ids.append(r["task"]["task_id"])
     print(f"  ③ 创建重复任务 #{ids[0]} #{ids[1]} @ {future}")
