@@ -16,22 +16,11 @@ struct OpenMemoApp: App {
 
 struct ContentView: View {
     @Environment(TaskListViewModel.self) private var taskVM
-    @State private var selectedTab = 1   // open straight into a fresh chat on launch
     @State private var reminderBannerVisible = false
     @State private var alertBannerVisible = false
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            TaskListView()
-                .tabItem { Label("任务", systemImage: "checklist") }
-                .tag(0)
-            ChatView()
-                .tabItem { Label("对话", systemImage: "bubble.left.and.bubble.right") }
-                .tag(1)
-            SettingsView()
-                .tabItem { Label("设置", systemImage: "gearshape") }
-                .tag(2)
-        }
+        MainContainerView()
         .task { // 先加载 + 启动轮询（不等权限弹窗，弹窗可能一直挂着）；权限申请并行进行
             taskVM.startPolling()
             await taskVM.load()
