@@ -18,6 +18,7 @@ struct ContentView: View {
     @Environment(TaskListViewModel.self) private var taskVM
     @State private var selectedTab = 1   // open straight into a fresh chat on launch
     @State private var reminderBannerVisible = false
+    @State private var alertBannerVisible = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -37,7 +38,12 @@ struct ContentView: View {
             Task { await LocalNotificationManager.shared.requestAuthorization() }
         }
         .overlay(alignment: .top) {
-            if reminderBannerVisible, let r = taskVM.latestReminder {
+            if alertBannerVisible, let a = taskVM.latestAlert {
+                AlertBannerView(alert: a) {
+                    withAnimation { alertBannerVisible = false }
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+            } else if reminderBannerVisible, let r = taskVM.latestReminder {
                 ReminderBannerView(reminder: r) {
                     withAnimation { reminderBannerVisible = false }
                 }
@@ -53,6 +59,49 @@ struct ContentView: View {
                 withAnimation { reminderBannerVisible = false }
             }
         }
+        .onChange(of: taskVM.latestAlert) { _, newValue in
+            guard newValue != nil else { return }
+            withAnimation { alertBannerVisible = true }
+            // 8 秒后自动收起
+            Task {
+                try? await Task.sleep(for: .seconds(8))
+                withAnimation { alertBannerVisible = false }
+            }
+        }
+    }
+}
+
+/// 顶部看护告警横幅：watchdog 发现问题/自动处理时显示
+struct AlertBannerView: View {
+    let alert: OpenMemoAlert
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: alert.type == "autofix" ? "wrench.and.screwdriver.fill" : "exclamationmark.triangle.fill")
+                .font(.title2)
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(alert.type == "autofix" ? "看护 · 已自动处理" : "看护 · 发现问题")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                Text(alert.message)
+                    .font(.subheadline)
+                    .lineLimit(3)
+            }
+            Spacer(minLength: 0)
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(14)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.orange.opacity(0.4)))
+        .shadow(radius: 8)
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
     }
 }
 

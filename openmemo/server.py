@@ -93,6 +93,13 @@ async def list_reminders(after_id: int = 0, limit: int = 20):
     return {"reminders": reminders, "count": len(reminders)}
 
 
+@app.get("/api/alerts")
+async def list_alerts(after_id: int = 0, limit: int = 20):
+    """看护告警（watchdog 发现的问题/自动处理），App 轮询后显示横幅。"""
+    alerts = task_manager.list_alerts(after_id=after_id, limit=limit)
+    return {"alerts": alerts, "count": len(alerts)}
+
+
 @app.get("/api/tasks/{task_id}")
 async def get_task(task_id: int):
     """Get a specific task"""

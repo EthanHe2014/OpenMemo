@@ -11,6 +11,7 @@ import sqlite3
 from datetime import datetime, timedelta
 
 from .config import DB_PATH
+from .tasks import TaskManager
 
 # AI 回复里的"承诺"信号
 PROMISE_KEYWORDS = [
@@ -65,9 +66,17 @@ def _all_tasks() -> list:
     return [dict(r) for r in rows]
 
 
-def run_watchdog(hours: int = 24) -> list:
-    """执行一次检查，返回问题列表（每条是一段可读的中文描述）。"""
+def run_watchdog(hours: int = 24, auto_fix: bool = True) -> list:
+    """执行一次检查，返回问题列表（每条是一段可读的中文描述）。
+
+    auto_fix=True（默认）时：
+    - 疑似重复 → 自动删除后建的那个任务（保留先建的），并记录告警
+    - 过期时间 → 自动取消（status=cancelled），并记录告警
+    - 承诺未落地 → 无法自动修复，仅记录告警
+    每条告警只报一次（24h 去重），避免每个 tick 重复刷屏。
+    """
     problems = []
+    tm = TaskManager()
     now = datetime.now()
     since = now - timedelta(hours=hours)
     conversations = _load_conversations(since)
@@ -106,10 +115,13 @@ def run_watchdog(hours: int = 24) -> list:
             window_end = reply_dt + timedelta(minutes=1)
             landed = _tasks_created_in_window(window_start, window_end)
             if not landed:
-                problems.append(
+                msg = (
                     f"[承诺未落地] 会话 {sid[:12]}… {user_dt.strftime('%H:%M')} "
                     f"用户:『{user_text[:24]}』→ AI 回复『{reply_text[:24]}』但 1 分钟内无任务入库"
                 )
+                problems.append(msg)
+                if auto_fix and not tm.alert_exists(msg):
+                    tm.add_alert("promise", msg)
 
     # ── 2. 时间在过去、永远不会触发的任务（近 24h 新建）────
     for t in _all_tasks():
@@ -121,10 +133,18 @@ def run_watchdog(hours: int = 24) -> list:
         if created < since:
             continue
         if t["status"] == "pending" and trig < now and not t["reminder_sent"]:
-            problems.append(
+            msg = (
                 f"[过期时间] 任务 #{t['task_id']}『{t['content'][:20]}』"
                 f"触发时间 {t['trigger_time']} 已过去，永远不会触发"
             )
+            problems.append(msg)
+            if auto_fix:
+                # 自动处理：取消这个永远触发不了的任务
+                tm.update_task(t["task_id"], status="cancelled")
+                fix_msg = f"[自动处理] 已取消过期任务 #{t['task_id']}『{t['content'][:20]}』（时间已过）"
+                print(f"[看护] {fix_msg}")
+                if not tm.alert_exists(fix_msg):
+                    tm.add_alert("autofix", fix_msg)
 
     # ── 3. 疑似重复（近 24h 新建，同内容+同时间 3 分钟内）──
     recent = [t for t in _all_tasks() if t["created_at"] and t["created_at"] >= since.strftime("%Y-%m-%d %H:%M:%S")]
@@ -137,10 +157,23 @@ def run_watchdog(hours: int = 24) -> list:
                 except (ValueError, TypeError):
                     continue
                 if abs((da - db).total_seconds()) <= 180:
-                    problems.append(
+                    msg = (
                         f"[疑似重复] 任务 #{a['task_id']} 与 #{b['task_id']} "
                         f"内容『{a['content'][:20]}』时间 {a['trigger_time']} 重复"
                     )
+                    problems.append(msg)
+                    if auto_fix:
+                        # 自动处理：删掉后建的那个（b），保留先建的（a）
+                        keep_id = a["task_id"] if da <= db else b["task_id"]
+                        drop_id = b["task_id"] if keep_id == a["task_id"] else a["task_id"]
+                        tm.delete_task(drop_id)
+                        fix_msg = (
+                            f"[自动处理] 已删除重复任务 #{drop_id}『{a['content'][:20]}』"
+                            f"（与 #{keep_id} 重复，保留先建的）"
+                        )
+                        print(f"[看护] {fix_msg}")
+                        if not tm.alert_exists(fix_msg):
+                            tm.add_alert("autofix", fix_msg)
                     break  # 一组报一次即可
 
     return problems

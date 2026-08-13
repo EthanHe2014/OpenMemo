@@ -33,6 +33,14 @@ final class OpenMemoAPI: @unchecked Sendable {
         return try decoder.decode(TaskListResponse.self, from: data)
     }
 
+    // MARK: - 看护告警
+    func listAlerts(afterId: Int = 0) async throws -> AlertListResponse {
+        var components = URLComponents(string: "\(baseURL)/api/alerts")!
+        components.queryItems = [URLQueryItem(name: "after_id", value: String(afterId))]
+        let (data, _) = try await URLSession.shared.data(from: components.url!)
+        return try decoder.decode(AlertListResponse.self, from: data)
+    }
+
     // MARK: - 提醒记录（AI 提醒原文）
     func listReminders(afterId: Int = 0) async throws -> ReminderListResponse {
         var components = URLComponents(string: "\(baseURL)/api/reminders")!

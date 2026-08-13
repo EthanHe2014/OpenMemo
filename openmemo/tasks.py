@@ -95,6 +95,16 @@ def init_db():
     except sqlite3.OperationalError:
         pass
 
+    # 看护告警：watchdog 发现的问题（自动处理后也留痕），App 轮询后显示
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS alerts (
+        alert_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT,
+        message TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now', 'localtime'))
+    )
+    """)
+
     # 提醒送达记录：每次提醒触发时，把 AI 生成的提醒原文存下来，App 轮询后显示
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS reminders (
@@ -305,6 +315,40 @@ class TaskManager:
             """SELECT reminder_id, task_id, content, message, created_at
                FROM reminders WHERE reminder_id > ?
                ORDER BY reminder_id DESC LIMIT ?""",
+            (after_id, limit),
+        )
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    # ── 看护告警（watchdog 发现的问题，App 轮询显示）──────────
+    def add_alert(self, alert_type: str, message: str):
+        """记录一条看护告警。"""
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO alerts (type, message) VALUES (?, ?)", (alert_type, message))
+        conn.commit()
+        conn.close()
+
+    def alert_exists(self, message: str, hours: int = 24) -> bool:
+        """判断同一条告警 24h 内是否已记录过（避免每个 tick 重复报）。"""
+        conn = get_db()
+        cursor = conn.cursor()
+        row = cursor.execute(
+            "SELECT alert_id FROM alerts WHERE message=? AND created_at >= datetime('now','localtime', ?)",
+            (message, f"-{hours} hours"),
+        ).fetchone()
+        conn.close()
+        return row is not None
+
+    def list_alerts(self, after_id: int = 0, limit: int = 20) -> List[dict]:
+        """列出 alert_id > after_id 的告警（最新在前）。"""
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT alert_id, type, message, created_at
+               FROM alerts WHERE alert_id > ?
+               ORDER BY alert_id DESC LIMIT ?""",
             (after_id, limit),
         )
         rows = cursor.fetchall()

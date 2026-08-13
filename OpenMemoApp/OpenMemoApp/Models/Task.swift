@@ -186,6 +186,27 @@ struct ReminderListResponse: Codable {
     let count: Int
 }
 
+struct OpenMemoAlert: Identifiable, Codable, Hashable {
+    let alertId: Int
+    let type: String?
+    let message: String
+    let createdAt: String?
+
+    var id: Int { alertId }
+
+    enum CodingKeys: String, CodingKey {
+        case alertId = "alert_id"
+        case type
+        case message
+        case createdAt = "created_at"
+    }
+}
+
+struct AlertListResponse: Codable {
+    let alerts: [OpenMemoAlert]
+    let count: Int
+}
+
 struct TaskResponse: Codable {
     let task: OpenMemoTask
     let success: Bool

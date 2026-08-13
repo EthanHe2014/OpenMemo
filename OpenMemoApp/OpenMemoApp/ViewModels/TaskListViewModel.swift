@@ -7,8 +7,11 @@ final class TaskListViewModel {
     var isLoading = false
     var errorMessage: String?
     var latestReminder: OpenMemoReminder?
+    var latestAlert: OpenMemoAlert?
     private var lastSeenReminderId = 0
+    private var lastSeenAlertId = 0
     private var hasLoadedReminders = false
+    private var hasLoadedAlerts = false
 
     private let api = OpenMemoAPI.shared
     private var pollTimer: Timer?
@@ -35,6 +38,7 @@ final class TaskListViewModel {
             let resp = try await api.listTasks()
             self.tasks = resp.tasks
             await pollReminders()   // 先轮询提醒（横幅）——不被本地通知同步阻塞
+            await pollAlerts()      // 再轮询看护告警（横幅）
             // 本地通知同步放后台做，个别平台（Catalyst）add 请求可能挂起，不能卡轮询
             let taskList = resp.tasks
             Task { await LocalNotificationManager.shared.syncNotifications(for: taskList) }
@@ -42,6 +46,24 @@ final class TaskListViewModel {
         } catch {
             self.errorMessage = error.localizedDescription
             self.isLoading = false
+        }
+    }
+
+    /// 轮询看护告警（watchdog 发现的问题/自动处理），有新告警就亮横幅。
+    /// 首次加载只记录游标，不弹历史告警。
+    func pollAlerts() async {
+        do {
+            let resp = try await api.listAlerts(afterId: lastSeenAlertId)
+            guard !resp.alerts.isEmpty else { return }
+            let newest = resp.alerts.max(by: { $0.alertId < $1.alertId })!
+            lastSeenAlertId = newest.alertId
+            if hasLoadedAlerts {
+                latestAlert = newest
+            } else {
+                hasLoadedAlerts = true
+            }
+        } catch {
+            // 静默失败，不影响主流程
         }
     }
 
