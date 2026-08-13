@@ -44,7 +44,6 @@ struct ChatView: View {
         }
         .task {
             await chatVM.startFresh()
-            speechAuthGranted = await VoiceInputManager.requestAuthorization()
             // 语音留言完成 → 填入输入框并发送
             voice.onMessageReady = { text in
                 chatVM.inputText = text
@@ -213,11 +212,17 @@ struct ChatView: View {
                     }
                 }
 
-                // 麦克风：语音留言（静音 2 秒自动发送）
+                // 麦克风：语音留言（静音 2 秒自动发送；权限在点击时才申请，避免启动卡死）
                 Button {
                     if voice.isTranscribing {
                         voice.stop()
-                    } else {
+                        return
+                    }
+                    Task {
+                        if !speechAuthGranted {
+                            speechAuthGranted = await VoiceInputManager.requestAuthorization()
+                        }
+                        guard speechAuthGranted else { return }
                         voice.stop()
                         voice.startVoiceInput()
                     }
