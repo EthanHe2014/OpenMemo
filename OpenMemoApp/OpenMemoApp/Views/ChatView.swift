@@ -4,7 +4,8 @@ struct ChatView: View {
     @Environment(ChatViewModel.self) private var chatVM
     @State private var voice = VoiceInputManager()
     @State private var speechAuthGranted = false
-    @State private var wakeEnabled = false
+    // 唤醒词开关默认开（首次启动即开始听），关闭后会记住
+    @AppStorage("wakeModeEnabled") private var wakeEnabled = true
 
     private let suggestions = [
         "明天下午3点开项目会",
@@ -49,6 +50,13 @@ struct ChatView: View {
             voice.onMessageReady = { text in
                 chatVM.inputText = text
                 chatVM.send()
+            }
+            // 默认自动开启「小麦小麦」唤醒（无需每次点耳朵；状态会被记住）
+            if wakeEnabled && !speechAuthGranted {
+                speechAuthGranted = await VoiceInputManager.requestAuthorization()
+            }
+            if wakeEnabled && speechAuthGranted {
+                voice.setWakeMode(true)
             }
         }
     }
