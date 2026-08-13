@@ -212,13 +212,15 @@ struct ChatView: View {
                     }
                 }
 
-                // 麦克风：语音留言（静音 2 秒自动发送；权限在点击时才申请，避免启动卡死）
+                // 麦克风：语音留言（静音 2 秒自动发送；权限在点击时才申请）
+                // ⚠️ Catalyst 的 Button 手势回调不在 MainActor 执行器上：
+                // 直接碰 @MainActor 状态会触发 assumeIsolated 崩溃 → 全部包进 Task @MainActor
                 Button {
-                    if voice.isTranscribing {
-                        voice.stop()
-                        return
-                    }
-                    Task {
+                    Task { @MainActor in
+                        if voice.isTranscribing {
+                            voice.stop()
+                            return
+                        }
                         if !speechAuthGranted {
                             speechAuthGranted = await VoiceInputManager.requestAuthorization()
                         }
