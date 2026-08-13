@@ -2,6 +2,8 @@ import SwiftUI
 
 struct ChatView: View {
     @Environment(ChatViewModel.self) private var chatVM
+    @State private var voice = VoiceInputManager()
+    @State private var speechAuthGranted = false
 
     private let suggestions = [
         "明天下午3点开项目会",
@@ -42,6 +44,12 @@ struct ChatView: View {
         }
         .task {
             await chatVM.startFresh()
+            speechAuthGranted = await VoiceInputManager.requestAuthorization()
+            // 语音留言完成 → 填入输入框并发送
+            voice.onMessageReady = { text in
+                chatVM.inputText = text
+                chatVM.send()
+            }
         }
     }
 
@@ -162,12 +170,31 @@ struct ChatView: View {
     // MARK: - 输入栏
 
     private var inputBar: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 4) {
+            // 语音状态提示
+            if voice.isListening {
+                HStack(spacing: 6) {
+                    Image(systemName: voice.isTranscribing ? "mic.fill" : "ear")
+                        .foregroundStyle(voice.isTranscribing ? .red : .green)
+                    Text(voice.isTranscribing
+                         ? (voice.liveText.isEmpty ? "在听… 静音 2 秒自动发送" : "\(voice.liveText)")
+                         : "在听…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Spacer()
+                    Button("取消") { voice.stop() }
+                        .font(.caption)
+                }
+                .padding(.horizontal, 16)
+                .transition(.opacity)
+            }
+
             Divider()
             HStack(spacing: 8) {
                 ZStack(alignment: .topLeading) {
                     MultilineTextField(
-                        text: Bindable(chatVM).inputText,
+                        text: inputBinding,
                         onEnter: { chatVM.send() },       // 回车 = 发送
                         onCtrlEnter: { chatVM.inputText += "\n" }  // Ctrl+回车 = 换行
                     )
@@ -186,6 +213,21 @@ struct ChatView: View {
                     }
                 }
 
+                // 麦克风：语音留言（静音 2 秒自动发送）
+                Button {
+                    if voice.isTranscribing {
+                        voice.stop()
+                    } else {
+                        voice.stop()
+                        voice.startVoiceInput()
+                    }
+                } label: {
+                    Image(systemName: voice.isTranscribing ? "mic.fill" : "mic")
+                        .font(.title2)
+                }
+                .foregroundStyle(voice.isTranscribing ? .red : .secondary)
+                .disabled(!speechAuthGranted)
+
                 Button {
                     chatVM.send()
                 } label: {
@@ -203,6 +245,21 @@ struct ChatView: View {
             .padding(.vertical, 8)
         }
         .background(.bar)
+        .animation(.easeInOut(duration: 0.2), value: voice.isListening)
+    }
+
+    /// 输入框绑定：语音留言时实时显示转写文字，否则走普通输入
+    private var inputBinding: Binding<String> {
+        Binding(
+            get: { voice.isTranscribing ? voice.liveText : chatVM.inputText },
+            set: { newValue in
+                if voice.isTranscribing {
+                    voice.liveText = newValue
+                } else {
+                    chatVM.inputText = newValue
+                }
+            }
+        )
     }
 }
 
