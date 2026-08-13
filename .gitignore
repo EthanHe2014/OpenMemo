@@ -11,3 +11,6 @@ data/audio/*.mp3
 .venv/
 
 # iOS app is its own standalone repo
+
+# 备份目录（勿提交）
+OpenMemo-Backup/
