@@ -202,7 +202,7 @@ struct ChatView: View {
                     .background(Color(.systemGray6))
                     .clipShape(RoundedRectangle(cornerRadius: 20))
 
-                    if chatVM.inputText.isEmpty {
+                    if effectiveInputText.isEmpty {
                         Text("输入消息...")
                             .foregroundStyle(.placeholder)
                             .padding(.leading, 18)
@@ -267,6 +267,12 @@ struct ChatView: View {
                 }
             }
         )
+    }
+
+    /// 输入框当前实际显示的文字（placeholder 隐藏条件必须用它，
+    /// 否则语音转写显示 liveText 时占位提示还在 → 文字重叠）
+    private var effectiveInputText: String {
+        voice.isTranscribing ? voice.liveText : chatVM.inputText
     }
 }
 
