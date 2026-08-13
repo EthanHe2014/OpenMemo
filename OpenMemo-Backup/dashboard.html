@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenMemo Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        .chat-box {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            background: #f9f9f9;
+        }
+        .message {
+            margin-bottom: 12px;
+            padding: 10px 14px;
+            border-radius: 8px;
+            max-width: 80%;
+        }
+        .message.user {
+            background: #667eea;
+            color: white;
+            margin-left: auto;
+        }
+        .message.assistant {
+            background: #f0f0f0;
+            color: #333;
+        }
+        .input-area {
+            display: flex;
+            gap: 10px;
+        }
+        .input-area input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .input-area input:focus {
+            border-color: #667eea;
+        }
+        .input-area button {
+            padding: 12px 24px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .input-area button:hover {
+            background: #5568d3;
+        }
+        .input-area button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .tasks-list {
+            list-style: none;
+        }
+        .tasks-list li {
+            padding: 12px;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .tasks-list li:last-child {
+            border-bottom: none;
+        }
+        .task-content {
+            flex: 1;
+        }
+        .task-time {
+            font-size: 0.85em;
+            color: #888;
+            margin-top: 4px;
+        }
+        .task-status {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .status-completed {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-cancelled {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .stat-label {
+            color: #888;
+            margin-top: 5px;
+        }
+        .loading {
+            text-align: center;
+            color: #888;
+            padding: 20px;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .checkbox-wrapper {
+            margin-left: 15px;
+        }
+        .checkbox-wrapper input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>⚡ OpenMemo</h1>
+            <p>AI-powered personal voice assistant with memory</p>
+        </header>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number" id="stat-pending">0</div>
+                <div class="stat-label">待办任务</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="stat-completed">0</div>
+                <div class="stat-label">已完成</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="stat-total">0</div>
+                <div class="stat-label">总计</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>💬 和 OpenMemo 对话</h2>
+            <div class="chat-box" id="chat-box">
+                <div class="message assistant">你好！我是 OpenMemo，你的个人 AI 助手。你可以让我添加任务、查询任务，或者随便聊聊。</div>
+            </div>
+            <div class="input-area">
+                <input type="text" id="user-input" placeholder="输入消息... (例如：明天下午 3 点开会)" />
+                <button id="send-btn" onclick="sendMessage()">发送</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>📋 任务列表</h2>
+            <div id="tasks-container">
+                <div class="loading">加载中...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        const SESSION_ID = 'web_user_' + Math.random().toString(36).substr(2, 9);
+
+        // Load tasks on page load
+        loadTasks();
+
+        // Enter key to send
+        document.getElementById('user-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        async function sendMessage() {
+            const input = document.getElementById('user-input');
+            const message = input.value.trim();
+            if (!message) return;
+
+            const sendBtn = document.getElementById('send-btn');
+            sendBtn.disabled = true;
+
+            // Add user message to chat
+            addMessageToChat(message, 'user');
+            input.value = '';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: message,
+                        session_id: SESSION_ID,
+                        speak: false
+                    })
+                });
+
+                const data = await response.json();
+                if (data.reply) {
+                    addMessageToChat(data.reply, 'assistant');
+                }
+                if (data.success) {
+                    loadTasks(); // Refresh tasks
+                }
+            } catch (error) {
+                addMessageToChat(`错误：${error.message}`, 'assistant');
+            } finally {
+                sendBtn.disabled = false;
+                input.focus();
+            }
+        }
+
+        function addMessageToChat(text, role) {
+            const chatBox = document.getElementById('chat-box');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message ${role}`;
+            msgDiv.textContent = text;
+            chatBox.appendChild(msgDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        async function loadTasks() {
+            try {
+                const [pendingRes, completedRes] = await Promise.all([
+                    fetch(`${API_BASE}/api/tasks?status=pending&limit=20`),
+                    fetch(`${API_BASE}/api/tasks?status=completed&limit=20`)
+                ]);
+
+                const pendingData = await pendingRes.json();
+                const completedData = await completedRes.json();
+
+                const allTasks = [...pendingData.tasks, ...completedData.tasks];
+                updateStats(pendingData.tasks.length, completedData.tasks.length, allTasks.length);
+                renderTasks(allTasks);
+            } catch (error) {
+                document.getElementById('tasks-container').innerHTML = 
+                    `<div class="error">加载失败：${error.message}</div>`;
+            }
+        }
+
+        function updateStats(pending, completed, total) {
+            document.getElementById('stat-pending').textContent = pending;
+            document.getElementById('stat-completed').textContent = completed;
+            document.getElementById('stat-total').textContent = total;
+        }
+
+        function renderTasks(tasks) {
+            const container = document.getElementById('tasks-container');
+            if (tasks.length === 0) {
+                container.innerHTML = '<div class="loading">暂无任务</div>';
+                return;
+            }
+
+            const html = '<ul class="tasks-list">' + tasks.map(task => {
+                const timeInfo = task.trigger_time ? `<div class="task-time">⏰ ${task.trigger_time}</div>` : '';
+                const statusClass = `status-${task.status}`;
+                const statusText = task.status === 'pending' ? '待办' : task.status === 'completed' ? '已完成' : '已取消';
+                
+                return `
+                    <li>
+                        <div class="task-content">
+                            <strong>${escapeHtml(task.content)}</strong>
+                            ${timeInfo}
+                        </div>
+                        <span class="task-status ${statusClass}">${statusText}</span>
+                        ${task.status === 'pending' ? `
+                            <div class="checkbox-wrapper">
+                                <input type="checkbox" onchange="completeTask(${task.task_id})" title="标记完成" />
+                            </div>
+                        ` : ''}
+                    </li>
+                `;
+            }).join('') + '</ul>';
+
+            container.innerHTML = html;
+        }
+
+        async function completeTask(taskId) {
+            try {
+                const response = await fetch(`${API_BASE}/api/tasks/${taskId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 'completed' })
+                });
+                if (response.ok) {
+                    loadTasks();
+                }
+            } catch (error) {
+                alert(`完成失败：${error.message}`);
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

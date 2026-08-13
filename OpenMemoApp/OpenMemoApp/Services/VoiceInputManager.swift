@@ -54,6 +54,7 @@ final class VoiceInputManager {
     private var wakeModeEnabled = false  // 唤醒词开关（App 输入栏按钮控制）
     private var isRearming = false       // 防重入：stop 后自动重新挂起唤醒监听
     private var rearmToken = 0           // 唤醒接管时作废所有待执行的自动重挂
+    private var currentSessionEpoch = 0  // 会话代数：旧会话的迟到回调不得影响新会话
     private var stripAckUntil: Date?     // 留言会话初期：剥离服务器应答"我在"被麦克风拾取的残余
 
     // MARK: - 权限
@@ -150,6 +151,8 @@ final class VoiceInputManager {
         }
 
         // 全新 request —— 只属于本次会话
+        currentSessionEpoch += 1
+        let epoch = currentSessionEpoch
         let req = SFSpeechAudioBufferRecognitionRequest()
         req.shouldReportPartialResults = true
         req.taskHint = .dictation
@@ -165,6 +168,9 @@ final class VoiceInputManager {
             let shouldCleanup = (error != nil) || (result?.isFinal == true)
             Task { @MainActor in
                 guard let self else { return }
+                // 旧会话的迟到回调（会话已被销毁/替换）一律忽略，
+                // 否则会误杀刚开的新会话（唤醒接管时必现）
+                guard epoch == self.currentSessionEpoch else { return }
                 if !text.isEmpty {
                     self.handle(text: text)
                 }
@@ -214,14 +220,26 @@ final class VoiceInputManager {
     }
 
     /// 唤醒命中后的完整流程：
-    /// 麦克风保持常听（不销毁会话！）→ 服务器 Edge TTS 应答"我在！"（边放边听，
-    /// 跟着应答说话也不丢字）→ 留言内容剥离开头噪音后照常转写
+    /// 销毁唤醒会话（识别流从头开始，不带唤醒词垃圾）→ 立刻开全新留言会话（
+    /// 引擎在应答播放期间完成预热）→ 服务器应答"我在！"边放边听，
+    /// 应答播完时识别器已稳定，紧跟说话一个字都不丢
     func handleWakeWord() async {
-        // 开留言会话；开头 3.5 秒内剥离开头噪音：唤醒词残余（小麦）与应答"我在"
-        stripAckUntil = Date().addingTimeInterval(3.5)
-        // 服务器朗读"我在！"（Xiaoxiao，与 AI 回复同声）；不销毁会话，
-        // 应答播放期间麦克风仍在听，用户紧跟说话不会丢
+        rearmToken += 1   // 作废所有待执行的自动重挂（防止旧会话回调抢先重挂）
+        isRearming = true     // 阻止 stop() 自动重挂（接下来手动开留言会话）
+        stop()
+        isRearming = false
+
+        // 开全新留言会话（先于应答启动，预热引擎；开头 2.5s 剥离开头噪音）
+        stripAckUntil = Date().addingTimeInterval(2.5)
+        startVoiceInput()
+
+        // 服务器朗读"我在！"（Xiaoxiao，与 AI 回复同声）；播放期间麦克风已在听
         await OpenMemoAPI.shared.speak("我在！")
+
+        // 保险：万一留言会话没起来（识别器不可用等），应答后重新挂起唤醒
+        if !isListening && wakeModeEnabled {
+            startWakeListening()
+        }
     }
 
     // MARK: - 转写处理
