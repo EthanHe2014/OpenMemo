@@ -217,8 +217,8 @@ struct ChatView: View {
                 // 直接碰 @MainActor 状态会触发 assumeIsolated 崩溃 → 全部包进 Task @MainActor
                 Button {
                     Task { @MainActor in
-                        // 开始录音前停掉 AI 朗读，避免扬声器声音被麦克风拾取（回声）
-                        SpeechManager.shared.stop()
+                        // 开始录音前打断服务端语音（Edge TTS 在 Mac 扬声器播放），防回声
+                        Task { try? await OpenMemoAPI.shared.stopSpeak() }
                         if voice.isTranscribing {
                             voice.stop()
                             return

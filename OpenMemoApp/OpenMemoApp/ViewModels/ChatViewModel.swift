@@ -121,8 +121,6 @@ final class ChatViewModel {
             do {
                 let reply = try await api.chat(message: text, sessionId: sessionId)
                 self.messages.append(ChatMessage(role: .assistant, text: reply))
-                // 朗读 AI 回复（剥离 emoji）
-                SpeechManager.shared.speak(reply)
                 // 保持侧边栏最新，让新建/更新的会话出现在顶部。
                 await self.refreshSessions()
             } catch {

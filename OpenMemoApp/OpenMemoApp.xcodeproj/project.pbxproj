@@ -15,7 +15,6 @@
 		7ED051FA74363EDE488FB1D5464835D6 /* LocalNotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D99BF3FDC9FE5FFB1FF87BE32623D27 /* LocalNotificationManager.swift */; };
 		885A6C8C1714E34C44B570F1A04D9E5A /* Task.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF3D1609A5DDE7A9D549FADA992615F0 /* Task.swift */; };
 		897F987B59BEB9F76CE1FC30685CAFE2 /* MultilineTextField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 166DB576ED62CF488EDC1337493D4B6D /* MultilineTextField.swift */; };
-		9F1A540E1D480F8D546465D1C802B547 /* SpeechManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77BFE052D627CD97A4798E8F7A20E897 /* SpeechManager.swift */; };
 		ACFD02015216B0906D6D8197760EA888 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF73A5B7DF5609B7F5B3787E260F778C /* SettingsView.swift */; };
 		DA02BA6BB60124373031BCB6DE9A50CB /* AddTaskView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 857DA4318BB6EBB68DCB5D74A6E0D21E /* AddTaskView.swift */; };
 		DC00F7B67A1190C0060408F799BCBC0B /* VoiceInputManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 218B53B706FC5B1F1C28D8FB88928F9A /* VoiceInputManager.swift */; };
@@ -32,7 +31,6 @@
 		524E53A89F8D859299CE9CF131352452 /* OpenMemoAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenMemoAPI.swift; sourceTree = "<group>"; };
 		5F36CB9D529969A9E2B0518B76E56E51 /* OpenMemoApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OpenMemoApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		614F757EA85F66FC59F1938139F32337 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		77BFE052D627CD97A4798E8F7A20E897 /* SpeechManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechManager.swift; sourceTree = "<group>"; };
 		7D99BF3FDC9FE5FFB1FF87BE32623D27 /* LocalNotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNotificationManager.swift; sourceTree = "<group>"; };
 		857DA4318BB6EBB68DCB5D74A6E0D21E /* AddTaskView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddTaskView.swift; sourceTree = "<group>"; };
 		8EA9D06452743221322319580ABAB234 /* TaskListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskListView.swift; sourceTree = "<group>"; };
@@ -108,7 +106,6 @@
 			isa = PBXGroup;
 			children = (
 				7D99BF3FDC9FE5FFB1FF87BE32623D27 /* LocalNotificationManager.swift */,
-				77BFE052D627CD97A4798E8F7A20E897 /* SpeechManager.swift */,
 				218B53B706FC5B1F1C28D8FB88928F9A /* VoiceInputManager.swift */,
 			);
 			path = Services;
@@ -195,7 +192,6 @@
 				FFAE772ABEA631D7F1467FE9D74D52EB /* OpenMemoAPI.swift in Sources */,
 				2DE81D56F4484C8B802F0F46D8E9512E /* OpenMemoApp.swift in Sources */,
 				ACFD02015216B0906D6D8197760EA888 /* SettingsView.swift in Sources */,
-				9F1A540E1D480F8D546465D1C802B547 /* SpeechManager.swift in Sources */,
 				885A6C8C1714E34C44B570F1A04D9E5A /* Task.swift in Sources */,
 				F4FCEEB6CA74E28E725F909E3393CA98 /* TaskDetailView.swift in Sources */,
 				5EFE11A19AA90AD66B8CDC7CF86D417F /* TaskListView.swift in Sources */,

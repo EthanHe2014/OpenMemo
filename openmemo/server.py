@@ -7,10 +7,10 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from .config import SERVER_HOST, SERVER_PORT, AI_MODEL
-from .conversation import process_message
+from .conversation import process_message, speak_safe
 from .tasks import TaskManager, ConversationManager
 from .scheduler import start_scheduler, stop_scheduler
-from .voice import speak
+from .voice import speak, stop_speaking
 
 
 # Lifespan manager
@@ -164,7 +164,10 @@ async def chat(request: Request):
     if not message:
         return JSONResponse({"error": "Message is required"}, status_code=400)
     
-    reply = await process_message(session_id, message, speak_response=speak_response)
+    reply = await process_message(session_id, message, speak_response=False)
+    # 后台朗读（Edge TTS XiaoxiaoNeural，与提醒同声）：回复立即返回，语音不阻塞聊天
+    if speak_response:
+        asyncio.create_task(speak_safe(reply))
     return {"reply": reply, "success": True}
 
 
@@ -178,6 +181,13 @@ async def speak_text(request: Request):
     
     success = await speak(text)
     return {"success": success}
+
+
+@app.post("/api/stop-speak")
+async def stop_speak_text():
+    """立即打断当前语音播放（App 麦克风录音时调用，防回声）"""
+    stop_speaking()
+    return {"success": True}
 
 
 @app.get("/api/conversations/{session_id}")

@@ -128,7 +128,8 @@ final class OpenMemoAPI: @unchecked Sendable {
 
     // MARK: - 对话
     func chat(message: String, sessionId: String) async throws -> String {
-        let reqBody = ChatRequest(message: message, sessionId: sessionId, speak: false)
+        // speak: true → 服务端用 Edge TTS（XiaoxiaoNeural）朗读回复，与提醒同声
+        let reqBody = ChatRequest(message: message, sessionId: sessionId, speak: true)
         let jsonData = try encoder.encode(reqBody)
         var req = URLRequest(url: URL(string: "\(baseURL)/api/chat")!)
         req.httpMethod = "POST"
@@ -138,5 +139,13 @@ final class OpenMemoAPI: @unchecked Sendable {
         let (data, _) = try await URLSession.shared.data(for: req)
         let resp = try decoder.decode(ChatResponse.self, from: data)
         return resp.reply
+    }
+
+    /// 立即打断服务端当前语音播放（用户点麦克风录音时调用，防回声）
+    func stopSpeak() async {
+        var req = URLRequest(url: URL(string: "\(baseURL)/api/stop-speak")!)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 5
+        _ = try? await URLSession.shared.data(for: req)
     }
 }

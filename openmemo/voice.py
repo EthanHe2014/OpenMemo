@@ -64,26 +64,48 @@ async def generate_speech(text: str, voice: str = None, rate: str = "+0%") -> Pa
     return output_path
 
 
+_playback_proc = None  # 当前 afplay 进程（用于打断）
+
+
 def play_audio(audio_path: Path, volume: float = 1.0):
     """Play audio file on Mac mini speakers using afplay.
-    
+
     Args:
         audio_path: Path to audio file
         volume: Volume level (0.0 to 1.0)
     """
+    global _playback_proc
     if not audio_path.exists():
         print(f"Audio file not found: {audio_path}")
         return
-    
+
+    # 打断上一条还在播的语音（新回复 / 新提醒开始前）
+    stop_speaking()
+
     # Use afplay on macOS
     cmd = ["afplay", str(audio_path)]
     if volume != 1.0:
         cmd.extend(["-v", str(volume)])
-    
+
     try:
-        subprocess.run(cmd, check=True, capture_output=True)
-    except subprocess.CalledProcessError as e:
+        _playback_proc = subprocess.Popen(cmd)
+        _playback_proc.wait()
+    except Exception as e:
         print(f"Audio playback error: {e}")
+    finally:
+        _playback_proc = None
+
+
+def stop_speaking():
+    """立即打断当前播放（用户开始录音 / 新消息到达时调用，防止回声与叠加）"""
+    global _playback_proc
+    proc = _playback_proc
+    _playback_proc = None
+    if proc is not None and proc.poll() is None:
+        try:
+            proc.kill()
+        except Exception:
+            pass
 
 
 def show_notification(title: str, message: str):
