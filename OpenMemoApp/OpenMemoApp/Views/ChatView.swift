@@ -231,7 +231,7 @@ struct ChatView: View {
                         .font(.title2)
                 }
                 .foregroundStyle(voice.isTranscribing ? .red : .secondary)
-                .disabled(!speechAuthGranted)
+                // 不 disabled：第一次点击时在按钮内部申请权限
 
                 Button {
                     chatVM.send()
