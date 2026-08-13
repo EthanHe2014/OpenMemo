@@ -30,10 +30,11 @@ final class VoiceInputManager {
 
     // MARK: - 权限
 
-    static func requestAuthorization() async -> Bool {
+    nonisolated static func requestAuthorization() async -> Bool {
         await withCheckedContinuation { cont in
-            SFSpeechRecognizer.requestAuthorization { status in
-                // 完成回调在后台线程，必须跳回 MainActor 再 resume，否则崩溃
+            // 完成回调在后台线程：闭包必须 @Sendable（不继承 MainActor），
+            // 再 Task { @MainActor } 跳回主线程 resume，否则 Swift 6 隔离断言崩溃
+            SFSpeechRecognizer.requestAuthorization { @Sendable status in
                 Task { @MainActor in
                     cont.resume(returning: status == .authorized)
                 }
@@ -90,14 +91,16 @@ final class VoiceInputManager {
         request.shouldReportPartialResults = true
         request.taskHint = .dictation
 
-        recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
+        recognitionTask = recognizer.recognitionTask(with: request) { @Sendable [weak self] result, error in
+            // 在后台线程先取出 Sendable 数据（String），避免把非 Sendable 的 result 传进 MainActor
+            let text = result?.bestTranscription.formattedString ?? ""
+            let shouldCleanup = (error != nil) || (result?.isFinal == true)
             Task { @MainActor in
                 guard let self else { return }
-                if let result {
-                    let text = result.bestTranscription.formattedString
+                if !text.isEmpty {
                     self.handle(text: text)
                 }
-                if error != nil || result?.isFinal == true {
+                if shouldCleanup {
                     // 引擎自动结束（如长时间静音）——静默重挂
                     self.cleanupEngine()
                 }
