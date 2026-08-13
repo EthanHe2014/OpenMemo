@@ -43,6 +43,7 @@ final class VoiceInputManager {
     private var lastTextTime = Date()
     private var silenceTimer: Timer?
     private var isStarting = false
+    private var tapInstalled = false          // tap 只装一次，常驻
 
     // MARK: - 权限
 
@@ -80,9 +81,10 @@ final class VoiceInputManager {
         request?.endAudio()
         request = nil
         reqBox.request = nil
+        // 只停引擎，不 removeTap：tap 常驻，避免重复 installTap 触发
+        // "required condition is false: nullptr == Tap()" 崩溃
         if engineBox.engine.isRunning {
             engineBox.engine.stop()
-            engineBox.engine.inputNode.removeTap(onBus: 0)
         }
         isListening = false
         isTranscribing = false
@@ -166,7 +168,6 @@ final class VoiceInputManager {
         reqBox.request = nil
         if engineBox.engine.isRunning {
             engineBox.engine.stop()
-            engineBox.engine.inputNode.removeTap(onBus: 0)
         }
         isListening = false
         isTranscribing = false
