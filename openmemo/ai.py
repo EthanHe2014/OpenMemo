@@ -292,6 +292,7 @@ async def analyze_intent(user_message: str, conversation_context: list = None) -
                 "task": parsed.get("task"),
                 "tasks": parsed.get("tasks"),
                 "appointment": parsed.get("appointment"),
+                "search": parsed.get("search"),
             }
 
     return {

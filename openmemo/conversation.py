@@ -424,6 +424,28 @@ async def process_message(session_id: str, user_message: str,
     result = await analyze_intent(user_message, context)
 
     reply = result.get("reply") or "嗯，我在听，你说～"
+
+    # V0.7：用户现在就要的实时信息（search 字段）→ 搜索后让 AI 基于资料补全回复
+    search_query = result.get("search")
+    if search_query:
+        from .scheduler import _fetch_news
+        from .ai import call_ai
+        search_text = await _fetch_news(str(search_query).strip())
+        if search_text and "（无外部新闻源" not in search_text:
+            follow = await call_ai(
+                [{"role": "user", "content":
+                    f"用户刚才问的是：{user_message}\n\n实时搜索资料：\n{search_text[:1500]}\n\n"
+                    f"请基于这些资料给出最终回复：自然中文口语，直接给出关键信息；"
+                    f"资料里没有的就老实说没有，不要编造。"}],
+                system_prompt="你是OpenMemo，一个亲切的中文语音助手。用自然口语回答问题，简洁。",
+                temperature=0.5,
+                json_mode=False,
+            )
+            if not follow["error"] and follow["content"]:
+                reply = follow["content"].strip()
+        else:
+            reply = "抱歉，我暂时没查到实时信息，稍后再试试？"
+
     conv_manager.add_message(session_id, "assistant", reply, intent=result.get("action") or "chat")
 
     # Mechanical follow-through (create/schedule) — never alters the AI's words
