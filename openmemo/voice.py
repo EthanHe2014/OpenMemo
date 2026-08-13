@@ -1,10 +1,34 @@
 """语音输出模块 —— Edge TTS + Mac mini 扬声器"""
 import asyncio
 import os
+import re
 import subprocess
 import hashlib
 from pathlib import Path
 from .config import TTS_VOICE, AUDIO_DIR
+
+# 要读出来的文字里不允许出现 emoji（Edge TTS 会把 emoji 读出来/读成乱码）
+_EMOJI_RE = re.compile(
+    "["
+    "\U0001F300-\U0001FAFF"  # 各类表情/符号
+    "\U0001F1E6-\U0001F1FF"  # 国旗字母（🇨🇳 等）
+    "\u2600-\u27BF"          # 杂项符号/装饰
+    "\u2300-\u23FF"          # 技术符号（⏰⏳ 等）
+    "\u2B00-\u2BFF"          # 箭头/星
+    "\uFE0F"                 # 变体选择符（emoji 修饰）
+    "\u2B50\u2764\u2705\u274C\u270B\u2728\u2E3A-\u2E3B"
+    "]"
+)
+
+
+def strip_emojis(text: str) -> str:
+    """去掉文本里的 emoji（用于 TTS 朗读；显示场景保留原文）。"""
+    if not text:
+        return ""
+    cleaned = _EMOJI_RE.sub("", text)
+    # 去 emoji 后可能留下多余空格
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
+    return cleaned
 
 
 async def generate_speech(text: str, voice: str = None, rate: str = "+0%") -> Path:
@@ -19,8 +43,12 @@ async def generate_speech(text: str, voice: str = None, rate: str = "+0%") -> Pa
         Path to generated audio file
     """
     import edge_tts
-    
+
     voice = voice or TTS_VOICE
+    # TTS 不读 emoji（Edge TTS 会把 emoji 念出来）
+    text = strip_emojis(text)
+    if not text:
+        return None
     
     # Generate unique filename from text+rate hash
     text_hash = hashlib.md5(f"{text}{rate}".encode()).hexdigest()[:12]
