@@ -5,6 +5,21 @@ import AVFoundation
 /// 语音输入管理器：STT 语音留言 + 静音 2 秒自动发送 + "memo memo" 唤醒词。
 /// 前台常听（唤醒词模式）时丢弃普通语音，识别到 "memo memo" 后进入留言模式，
 /// 留言结束（2 秒无新语音）自动回调提交。
+///
+/// 注意（Catalyst 血泪教训）：
+/// - 完成回调在后台线程 → 闭包必须 @Sendable，数据先取出再跳 MainActor
+/// - AVAudioEngine.start() 在 Catalyst + USB 麦克风上可能卡住 → 必须在后台线程启动，
+///   绝不能在主线程调用（否则 App 无响应）
+/// 非 Sendable 对象的线程安全盒子（音频回调线程往里 append 缓冲）
+final class RecognitionRequestBox: @unchecked Sendable {
+    var request: SFSpeechAudioBufferRecognitionRequest?
+}
+
+/// AVAudioEngine 盒子：允许在后台线程 start()（Catalyst 上主线程 start 会卡死 App）
+final class AudioEngineBox: @unchecked Sendable {
+    let engine = AVAudioEngine()
+}
+
 @MainActor
 @Observable
 final class VoiceInputManager {
@@ -19,8 +34,9 @@ final class VoiceInputManager {
 
     private let recognizer: SFSpeechRecognizer? =
         SFSpeechRecognizer(locale: Locale(identifier: "zh-CN"))
-    private let audioEngine = AVAudioEngine()
-    private var request: SFSpeechAudioBufferRecognitionRequest?
+    private let engineBox = AudioEngineBox()
+    private let reqBox = RecognitionRequestBox()
+    nonisolated(unsafe) private var request: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
 
     private var wakeArmed = true              // 唤醒词监听中
@@ -63,9 +79,10 @@ final class VoiceInputManager {
         recognitionTask = nil
         request?.endAudio()
         request = nil
-        if audioEngine.isRunning {
-            audioEngine.stop()
-            audioEngine.inputNode.removeTap(onBus: 0)
+        reqBox.request = nil
+        if engineBox.engine.isRunning {
+            engineBox.engine.stop()
+            engineBox.engine.inputNode.removeTap(onBus: 0)
         }
         isListening = false
         isTranscribing = false
@@ -76,7 +93,6 @@ final class VoiceInputManager {
     private func startEngine(wakeMode: Bool) {
         guard !isStarting, !isListening, let recognizer, recognizer.isAvailable else { return }
         isStarting = true
-        defer { isStarting = false }
 
         do {
             let session = AVAudioSession.sharedInstance()
@@ -86,12 +102,13 @@ final class VoiceInputManager {
             print("[语音] 音频会话失败：\(error.localizedDescription)")
         }
 
-        request = SFSpeechAudioBufferRecognitionRequest()
-        guard let request else { return }
-        request.shouldReportPartialResults = true
-        request.taskHint = .dictation
+        let req = SFSpeechAudioBufferRecognitionRequest()
+        req.shouldReportPartialResults = true
+        req.taskHint = .dictation
+        request = req
+        reqBox.request = req
 
-        recognitionTask = recognizer.recognitionTask(with: request) { @Sendable [weak self] result, error in
+        recognitionTask = recognizer.recognitionTask(with: req) { @Sendable [weak self] result, error in
             // 在后台线程先取出 Sendable 数据（String），避免把非 Sendable 的 result 传进 MainActor
             let text = result?.bestTranscription.formattedString ?? ""
             let shouldCleanup = (error != nil) || (result?.isFinal == true)
@@ -107,24 +124,36 @@ final class VoiceInputManager {
             }
         }
 
-        let format = audioEngine.inputNode.outputFormat(forBus: 0)
-        // 音频线程回调：不碰 self（MainActor），直接捕获 request 追加缓冲
-        let req = request
-        audioEngine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
-            req.append(buffer)
+        let format = engineBox.engine.inputNode.outputFormat(forBus: 0)
+        guard format.sampleRate > 0, format.channelCount > 0 else {
+            print("[语音] 没有可用的麦克风输入格式")
+            isStarting = false
+            return
+        }
+        // 音频线程回调：通过 Sendable 盒子追加缓冲（不能捕获非 Sendable 的 req）
+        let box = reqBox
+        engineBox.engine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+            box.request?.append(buffer)
+        }
+        engineBox.engine.prepare()
+
+        // ⚠️ 关键：Catalyst 上 audioEngine.start() 可能卡住（USB 麦克风），
+        // 必须在后台线程启动，主线程保持响应
+        let engBox = engineBox
+        Task.detached(priority: .userInitiated) {
+            do {
+                try engBox.engine.start()
+            } catch {
+                print("[语音] 引擎启动失败：\(error.localizedDescription)")
+            }
         }
 
-        audioEngine.prepare()
-        do {
-            try audioEngine.start()
-            isListening = true
-            isTranscribing = !wakeMode
-            wakeArmed = wakeMode
-            lastTextTime = Date()
-            startSilenceTimer()
-        } catch {
-            print("[语音] 启动失败：\(error.localizedDescription)")
-        }
+        isListening = true
+        isTranscribing = !wakeMode
+        wakeArmed = wakeMode
+        lastTextTime = Date()
+        startSilenceTimer()
+        isStarting = false
     }
 
     private func cleanupEngine() {
@@ -133,9 +162,10 @@ final class VoiceInputManager {
         recognitionTask?.cancel()
         recognitionTask = nil
         request = nil
-        if audioEngine.isRunning {
-            audioEngine.stop()
-            audioEngine.inputNode.removeTap(onBus: 0)
+        reqBox.request = nil
+        if engineBox.engine.isRunning {
+            engineBox.engine.stop()
+            engineBox.engine.inputNode.removeTap(onBus: 0)
         }
         isListening = false
         isTranscribing = false
