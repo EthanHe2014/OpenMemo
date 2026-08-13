@@ -31,6 +31,19 @@ def _db():
     return conn
 
 
+def _is_followup_question(reply_text: str) -> bool:
+    """AI 回复若是追问/确认问句（还没落地），不算'承诺未落地'。
+    启发式：含问号、或以常见追问词结尾/开头。"""
+    if not reply_text:
+        return False
+    t = reply_text.strip()
+    if any(q in t for q in ("？", "?")):
+        return True
+    # 无问号但明显在问（口语省略问号的情况较少，保守处理）
+    endings = ("几点", "什么时候", "可以吗", "好吗", "行吗", "怎么样", "如何", "要不要", "对吧")
+    return t.endswith(endings) or any(t.endswith(e) for e in endings)
+
+
 def _load_conversations(since: datetime) -> list:
     """按会话顺序取最近对话（user/assistant 成对）。"""
     conn = _db()
@@ -101,6 +114,9 @@ def run_watchdog(hours: int = 24, auto_fix: bool = True) -> list:
                 continue
             user_text = m["content"] or ""
             reply_text = reply["content"] or ""
+            # AI 正在追问补全信息（回复是问句）→ 不算"承诺未落地"，跳过
+            if _is_followup_question(reply_text):
+                continue
             # 用户有任务意图 + AI 回复里有承诺 → 必须在窗口内落地任务
             if not any(k in user_text for k in USER_INTENT_KEYWORDS):
                 continue
