@@ -33,7 +33,10 @@ final class VoiceInputManager {
     static func requestAuthorization() async -> Bool {
         await withCheckedContinuation { cont in
             SFSpeechRecognizer.requestAuthorization { status in
-                cont.resume(returning: status == .authorized)
+                // 完成回调在后台线程，必须跳回 MainActor 再 resume，否则崩溃
+                Task { @MainActor in
+                    cont.resume(returning: status == .authorized)
+                }
             }
         }
     }
@@ -102,8 +105,10 @@ final class VoiceInputManager {
         }
 
         let format = audioEngine.inputNode.outputFormat(forBus: 0)
-        audioEngine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
-            self?.request?.append(buffer)
+        // 音频线程回调：不碰 self（MainActor），直接捕获 request 追加缓冲
+        let req = request
+        audioEngine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+            req.append(buffer)
         }
 
         audioEngine.prepare()
