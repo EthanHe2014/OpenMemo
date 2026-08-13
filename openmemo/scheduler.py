@@ -7,7 +7,8 @@ from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.cron import CronTrigger
 from .tasks import TaskManager
 from .voice import speak
-from .ai import call_ai
+from .ai import call_ai, _extract_json
+from .prompts import EXECUTOR_PROMPT
 
 
 scheduler = AsyncIOScheduler()
@@ -135,11 +136,33 @@ async def reminder_callback(task_id: int):
     task = task_manager.get_task(task_id)
     if not task or task["status"] != "pending":
         return
-    
+
+    # 先标记已提醒：执行可能耗时（AI 调用），避免看护把执行中的任务误判为"过期未触发"
+    task_manager.mark_reminded(task_id)
+
     content = task["content"]
     priority = task["priority"]
     task_type = task.get("task_type", "normal")
-    
+    meta = task.get("meta_data") or {}
+
+    # V0.7：任务带了动作指令（what_to_do）→ 交给 AI 执行引擎（可搜索/可跟进）
+    if meta.get("what_to_do"):
+        try:
+            executed = await _execute_action_task(task)
+        except Exception as e:
+            print(f"[执行] 异常：{e}；使用备用提醒")
+            executed = True
+            fallback = meta.get("reminder_text") or f"该{content}啦！"
+            try:
+                await speak(fallback, rate="+0%")
+            except Exception:
+                pass
+            task_manager.add_reminder(task_id, content, fallback)
+            _finish_reminder(task)
+            _arm_next(task)
+        if executed:
+            return
+
     # 智能任务类型：news / travel / schedule 走专门的执行逻辑
     if task_type == "news":
         await _execute_news_job(task)
@@ -242,12 +265,26 @@ def _next_occurrence(task: dict, recurring: str):
         return nxt
 
     weekday_map = {"一": 0, "二": 1, "三": 2, "四": 3, "五": 4, "六": 5, "日": 6, "天": 6}
-    for zh, idx in weekday_map.items():
-        if f"每周{zh}" in recurring_lower:
+    # 每周一三五 / 每周一、三、五 / 每周六日
+    m = re.search(r"每周([一二三四五六日天、，和及]+)", recurring_lower)
+    if m:
+        days = [weekday_map[ch] for ch in m.group(1) if ch in weekday_map]
+        if days:
             nxt = at(now.year, now.month, now.day) + timedelta(days=1)
-            while nxt.weekday() != idx:
+            while nxt.weekday() not in days:
                 nxt += timedelta(days=1)
             return nxt
+    # 每N小时 / 每N分钟 / 每N天
+    m = re.search(r"每(\d+)\s*(小时|分钟|天)", recurring_lower)
+    if m:
+        n = int(m.group(1))
+        unit = m.group(2)
+        if unit == "小时":
+            return now + timedelta(hours=n)
+        if unit == "分钟":
+            return now + timedelta(minutes=n)
+        if unit == "天":
+            return at(now.year, now.month, now.day) + timedelta(days=n)
 
     if "每月" in recurring_lower:
         m = re.search(r"每月(\d{1,2})[号日]", recurring_lower)
@@ -377,6 +414,142 @@ def stop_scheduler():
     print("[调度器] 已停止")
 
 # ============ SMART TASK EXECUTION ============
+
+async def _execute_action_task(task: dict) -> bool:
+    """V0.7 动作执行：把 what_to_do 命令交给 AI 执行引擎（可搜索、可跟进）。
+    返回 True 表示已处理（播报/跟进/跳过都算）。"""
+    meta = task.get("meta_data") or {}
+    what_to_do = meta.get("what_to_do")
+    if not what_to_do:
+        return False
+
+    # skip_if_user_replied：原触发后用户发过消息 → 视为已回应，本次跳过
+    if meta.get("skip_if_user_replied"):
+        fired_at = task.get("trigger_time")
+        if fired_at and _user_replied_since(fired_at):
+            print(f"[执行] 任务 {task['task_id']} 触发后用户已回复，跳过本次跟进")
+            task_manager.add_reminder(task["task_id"], task["content"], "（跟进已跳过：用户已回复）")
+            _finish_reminder(task)
+            _arm_next(task)
+            return True
+
+    now = datetime.now()
+    user_msg = (
+        f"任务：{task['content']}\n"
+        f"动作指令：{what_to_do}\n"
+        f"当前时间：{now.strftime('%Y年%m月%d日 %H:%M')}（星期{['一','二','三','四','五','六','日'][now.weekday()]}）\n"
+        f"请执行。"
+    )
+
+    async def _run(prompt: str) -> dict:
+        # 快速失败（retries=0）：失败交给备份逻辑，绝不长时间卡住任务
+        result = await call_ai(
+            [{"role": "user", "content": prompt}],
+            system_prompt=EXECUTOR_PROMPT,
+            temperature=0.5,
+            json_mode=True,
+            retries=0,
+        )
+        if result["error"] or not result["content"]:
+            return {}
+        parsed = _extract_json(result["content"])
+        return parsed if isinstance(parsed, dict) else {}
+
+    try:
+        parsed = await asyncio.wait_for(_run(user_msg), timeout=45)
+    except Exception as e:
+        print(f"[执行] AI 调用超时/失败：{e}")
+        parsed = {}
+    output = parsed.get("output") or parsed.get("reply") or ""
+    need_search = parsed.get("need_search")
+
+    # 需要实时信息 → 搜索后让 AI 基于资料产出最终结果
+    if need_search:
+        search_text = await _fetch_news(str(need_search).strip())
+        try:
+            parsed2 = await asyncio.wait_for(
+                _run(user_msg + f"\n\n搜索资料：\n{search_text[:1500]}"), timeout=45
+            )
+        except Exception as e:
+            print(f"[执行] 二次 AI 调用超时/失败：{e}")
+            parsed2 = {}
+        if parsed2.get("output"):
+            output = parsed2["output"]
+        elif not output:
+            output = f"{task['content']}：{search_text[:100]}" if search_text and "（无外部新闻源" not in search_text else ""
+
+    # 备份：AI 执行失败 → 直接念 reminder_text 或任务内容（绝不静默）
+    if not output:
+        output = meta.get("reminder_text") or f"该{task['content']}啦！"
+
+    if output:
+        try:
+            await speak(output, rate="+0%")
+        except Exception as e:
+            print(f"[执行] 播报出错：{e}")
+        task_manager.add_reminder(task["task_id"], task["content"], output)
+        print(f"[执行] 播报：{output[:60]}")
+
+    # 跟进（如"10分钟没回复再提醒"）
+    follow_up = parsed.get("follow_up")
+    # 防无限循环：只有指令明确要求"再提醒/跟进/追问"时才允许创建跟进任务
+    _re_follow = re.search(r"(若|如果|要是|没回复|未回复|没有回复|再提醒|继续跟进|跟进|追问|之后[^；;。]*提醒|然后[^；;。]*提醒)", str(what_to_do))
+    if isinstance(follow_up, dict) and follow_up.get("time") and follow_up.get("what_to_do") and _re_follow:
+        from .conversation import _parse_ai_datetime
+        ft_time = _parse_ai_datetime(follow_up.get("time"))
+        if ft_time:
+            ft_content = follow_up.get("content") or task["content"]
+            # 剥掉跟进从句（"若X分钟没回复再提醒"等），防止无限循环：
+            # 跟进任务只执行一次，what_to_do 只留核心动作
+            ft_what = re.sub(r"[；;，,]\s*若[^；;。]*?(没|未|不)[^；;。]*?(再|继续)(次)?提醒.*$", "", str(follow_up["what_to_do"]).strip())
+            ft_what = re.sub(r"[；;，,]\s*(如果|要是)[^；;。]*?(再|继续)(次)?提醒.*$", "", ft_what)
+            ft_what = ft_what.strip() or f"提醒用户：{ft_content}"
+            ft_meta = {
+                "what_to_do": ft_what,
+                "reminder_text": meta.get("reminder_text"),
+                "parent_task_id": task["task_id"],
+            }
+            if follow_up.get("skip_if_user_replied"):
+                ft_meta["skip_if_user_replied"] = True
+            ft = task_manager.add_task(
+                content=ft_content,
+                trigger_time=ft_time,
+                priority="high",
+                is_recurring=None,
+                task_type="action",
+                meta_data=ft_meta,
+            )
+            schedule_task(ft["task_id"], ft_time)
+            print(f"[执行] 已安排跟进任务 #{ft['task_id']} @ {ft_time}：{ft_content} | {ft_what}")
+
+    _finish_reminder(task)
+    _arm_next(task)
+    return True
+
+
+def _user_replied_since(fired_at: str) -> bool:
+    """原任务触发后，用户是否发过消息（有则视为已回应）。"""
+    import sqlite3
+    from .config import DB_PATH
+    try:
+        conn = sqlite3.connect(str(DB_PATH))
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT COUNT(*) FROM conversations WHERE role='user' AND created_at >= ?",
+            (fired_at,),
+        )
+        n = cur.fetchone()[0]
+        conn.close()
+        return n > 0
+    except Exception:
+        return False
+
+
+def _arm_next(task: dict):
+    """循环任务：安排下一次；一次性任务保持已完成。"""
+    if task.get("is_recurring"):
+        schedule_recurring(task["task_id"], task["is_recurring"], task["content"], task["priority"])
+
 
 NEWS_PROMPT = """你是OpenMemo，现在你需要为用户提供最新的{topic}新闻摘要。
 今天是{date}，请搜索并汇总近期的{topic}类重要新闻。

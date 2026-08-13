@@ -16,6 +16,7 @@ is ours. We never "humanize" or rewrite AI output.
 """
 import asyncio
 import json
+import re
 from datetime import datetime, timedelta
 
 from .ai import analyze_intent
@@ -39,9 +40,97 @@ async def speak_safe(text: str):
         print(f"[conversation] speak failed: {e}")
 
 
+def _extract_hm_cn(t: str):
+    """从中文时间里提取 (hour, minute)。支持：8点 / 8点半 / 8点30 / 8:30 / 晚上8点。"""
+    m = re.search(r"(\d{1,2})\s*[点时:：]\s*(\d{1,2})?\s*分?", t)
+    if not m:
+        return None
+    h = int(m.group(1))
+    mm = int(m.group(2)) if m.group(2) else 0
+    if "点半" in t or "时半" in t:
+        mm = 30
+    # 12 小时制补正
+    if h < 12 and any(k in t for k in ("下午", "晚上", "傍晚", "夜里", "午夜")):
+        h += 12
+    if h == 24:
+        h = 0
+    if mm > 59:
+        mm = 0
+    return h, mm
+
+
+def _parse_cn_relative(s: str):
+    """解析中文相对/口语时间 → 'YYYY-MM-DD HH:MM' 或 None。
+    支持：X分钟后 / 半小时后 / X小时后 / X天后 / 星期X / 下周三 /
+    今天/今晚/明天/明早/明晚/后天/大后天 + 时间 / 下午3点 / 晚上8点半。
+    """
+    now = datetime.now()
+    t = s.replace(" ", "").replace("，", ",")
+    if not t:
+        return None
+    # X分钟后 / 半小时后
+    if "半小时后" in t or "半个小时后" in t:
+        return (now + timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M")
+    m = re.search(r"(\d+)\s*分(钟)?(后)?", t)
+    if m and ("分钟" in t or "分后" in t or (m.group(2) is None and "分" in t and "点" not in t)):
+        return (now + timedelta(minutes=int(m.group(1)))).strftime("%Y-%m-%d %H:%M")
+    # X小时后
+    m = re.search(r"(\d+)\s*小时(钟)?(后)?", t)
+    if m:
+        return (now + timedelta(hours=int(m.group(1)))).strftime("%Y-%m-%d %H:%M")
+    # X天后（排除 星期X/周X）
+    m = re.search(r"(\d+)\s*天(后)?", t)
+    if m and "星期" not in t and "周" not in t:
+        return (now + timedelta(days=int(m.group(1)))).strftime("%Y-%m-%d %H:%M")
+    # 星期X / 下周三（下周 = 下个自然周（周一起）的星期X）
+    weekday_map = {"一": 0, "二": 1, "三": 2, "四": 3, "五": 4, "六": 5, "日": 6, "天": 6}
+    m = re.search(r"(下?)(星期|周)([一二三四五六日天])", t)
+    if m:
+        idx = weekday_map[m.group(3)]
+        if m.group(1) == "下":
+            this_monday = now.date() - timedelta(days=now.weekday())
+            nxt_date = this_monday + timedelta(days=7 + idx)
+        else:
+            days_ahead = (idx - now.weekday() + 7) % 7
+            if days_ahead == 0:
+                days_ahead = 7
+            nxt_date = now.date() + timedelta(days=days_ahead)
+        base = datetime.combine(nxt_date, datetime.min.time()).replace(hour=9, minute=0)
+        hm = _extract_hm_cn(t)
+        if hm:
+            base = base.replace(hour=hm[0], minute=hm[1])
+        return base.strftime("%Y-%m-%d %H:%M")
+    # 今天/今晚/明天/明早/明晚/后天/大后天 + 时间
+    day_map = {"大后天": 3, "后天": 2, "明天": 1, "明早": 1, "明晚": 1, "今晚": 0, "今天": 0, "今早": 0}
+    offset = None
+    for kw, off in day_map.items():
+        if kw in t:
+            offset = off
+            break
+    hm = _extract_hm_cn(t)
+    if hm:
+        if offset is None:
+            base = now.replace(hour=hm[0], minute=hm[1], second=0, microsecond=0)
+            if base <= now + timedelta(minutes=5):
+                base += timedelta(days=1)
+            return base.strftime("%Y-%m-%d %H:%M")
+        base = (now + timedelta(days=offset)).replace(hour=hm[0], minute=hm[1], second=0, microsecond=0)
+        return base.strftime("%Y-%m-%d %H:%M")
+    if offset is not None:
+        return (now + timedelta(days=offset)).replace(hour=9, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M")
+    # 纯"下午3点"（无日期词）
+    if hm:
+        base = now.replace(hour=hm[0], minute=hm[1], second=0, microsecond=0)
+        if base <= now + timedelta(minutes=5):
+            base += timedelta(days=1)
+        return base.strftime("%Y-%m-%d %H:%M")
+    return None
+
+
 def _parse_ai_datetime(value) -> str | None:
     """Normalize the AI's 'time'/'at' field into 'YYYY-MM-DD HH:MM'.
-    Accepts absolute formats, ISO, and partial formats (HH:MM / MM-DD HH:MM).
+    Accepts absolute formats, ISO, partial formats, and Chinese relative
+    expressions (今天/明天/后天/X分钟后/下午3点/下周三…).
     Returns None if unparseable.
     """
     if not value:
@@ -67,14 +156,29 @@ def _parse_ai_datetime(value) -> str | None:
             return dt.strftime("%Y-%m-%d %H:%M")
         except ValueError:
             continue
-    # 只有 HH:MM（模型偶尔偷懒不给日期）：今天，若已过则明天
+    # 只有 HH:MM：今天，若已过则明天
     try:
         dt = datetime.strptime(s, "%H:%M").replace(year=now.year, month=now.month, day=now.day)
         if dt <= now + timedelta(minutes=5):
             dt += timedelta(days=1)
         return dt.strftime("%Y-%m-%d %H:%M")
     except ValueError:
-        return None
+        pass
+    # 中文相对/口语时间（V0.7 补全：AI 常写 明天早上8点/半小时后/下周三）
+    return _parse_cn_relative(s)
+
+
+def _extract_multi_daily_times(recurring) -> list:
+    """从重复规则里提取多个每日时间点（如 '每天08:00和21:00' → ['08:00','21:00']）。
+    只有一个时间点或没有 → 返回空列表。"""
+    s = str(recurring or "")
+    times = re.findall(r"(\d{1,2})[:：](\d{2})", s)
+    if len(times) >= 2:
+        return [f"{int(h):02d}:{mm}" for h, mm in times]
+    pts = re.findall(r"(\d{1,2})点", s)
+    if len(pts) >= 2:
+        return [f"{int(h):02d}:00" for h in pts]
+    return []
 
 
 def _derive_content(task: dict) -> str | None:
@@ -100,6 +204,20 @@ def _create_task_from_ai_task(task: dict, session_id: str) -> dict | None:
     """Create a task from the AI's 'task' field. Returns the DB task or None."""
     if not task:
         return None
+
+    # 每天多个时间（recurring='每天08:00和21:00'）→ 每个时间单独建一个任务
+    multi_times = _extract_multi_daily_times(task.get("recurring"))
+    if multi_times:
+        created_all = []
+        for hm in multi_times:
+            sub = dict(task)
+            sub["recurring"] = "每天"
+            sub["time"] = hm
+            one = _create_task_from_ai_task(sub, session_id)
+            if one:
+                created_all.append(one)
+        return created_all[0] if created_all else None
+
     content = _derive_content(task)
     if not content:
         print("[conversation] task_added but AI gave no task.content / reminder_text")
@@ -122,12 +240,16 @@ def _create_task_from_ai_task(task: dict, session_id: str) -> dict | None:
         duration_minutes = None
     priority = task.get("priority") or "medium"
     task_type = task.get("task_type") or "add"
+    task_type = "normal" if task_type == "add" else task_type
     meta = dict(task.get("meta") or {})
     # Persist the AI's own reminder words so the execution layer reads AI text
     if task.get("reminder_text"):
         meta["reminder_text"] = task["reminder_text"]
     if task.get("time_human"):
         meta["time_human"] = task["time_human"]
+    # V0.7：到点后要执行的**动作指令**（发给 AI 执行引擎，不显示在 UI）
+    if task.get("what_to_do"):
+        meta["what_to_do"] = str(task["what_to_do"]).strip()
 
     db_task = task_manager.add_task(
         content=content,
