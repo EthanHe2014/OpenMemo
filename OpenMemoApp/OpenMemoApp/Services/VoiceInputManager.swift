@@ -2,7 +2,7 @@ import Foundation
 import Speech
 import AVFoundation
 
-/// 语音输入管理器：STT 语音留言 + 静音 3.5 秒自动发送。
+/// 语音输入管理器：STT 语音留言 + 静音 2.5 秒自动发送。
 ///
 /// ⚠️ Catalyst 血泪教训（不要再"优化"回去）：
 /// 1. **每次会话全新 AVAudioEngine + 全新 recognition request**，stop 后彻底销毁。
@@ -297,11 +297,11 @@ final class VoiceInputManager {
         }
     }
 
-    /// 留言模式：3.5 秒没有新语音 → 自动提交
+    /// 留言模式：2.5 秒没有新语音 → 自动提交
     private func checkSilence() {
         guard isTranscribing else { return }
         let idle = Date().timeIntervalSince(lastTextTime)
-        if idle >= 3.5 {
+        if idle >= 2.5 {
             let finalText = liveText.trimmingCharacters(in: .whitespacesAndNewlines)
             // 先彻底销毁会话，再回调提交（避免重复触发）
             stop()

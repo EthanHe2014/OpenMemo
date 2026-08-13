@@ -177,7 +177,7 @@ struct ChatView: View {
                     Image(systemName: voice.isTranscribing ? "mic.fill" : "ear.fill")
                         .foregroundStyle(voice.isTranscribing ? .red : .green)
                     Text(voice.isTranscribing
-                         ? (voice.liveText.isEmpty ? "在听… 静音 3.5 秒自动发送" : "\(voice.liveText)")
+                         ? (voice.liveText.isEmpty ? "在听… 静音 2.5 秒自动发送" : "\(voice.liveText)")
                          : "在听「小麦小麦」…")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -237,7 +237,7 @@ struct ChatView: View {
                 }
                 .help(wakeEnabled ? "关闭「小麦小麦」唤醒" : "开启「小麦小麦」唤醒")
 
-                // 麦克风：语音留言（静音 3.5 秒自动发送；权限在点击时才申请）
+                // 麦克风：语音留言（静音 2.5 秒自动发送；权限在点击时才申请）
                 // ⚠️ Catalyst 的 Button 手势回调不在 MainActor 执行器上：
                 // 直接碰 @MainActor 状态会触发 assumeIsolated 崩溃 → 全部包进 Task @MainActor
                 Button {
