@@ -4,8 +4,6 @@ struct ChatView: View {
     @Environment(ChatViewModel.self) private var chatVM
     @State private var voice = VoiceInputManager()
     @State private var speechAuthGranted = false
-    // 唤醒词开关默认开（首次启动即开始听），关闭后会记住
-    @AppStorage("wakeModeEnabled") private var wakeEnabled = true
 
     private let suggestions = [
         "明天下午3点开项目会",
@@ -51,11 +49,11 @@ struct ChatView: View {
                 chatVM.inputText = text
                 chatVM.send()
             }
-            // 默认自动开启「小麦小麦」唤醒（无需每次点耳朵；状态会被记住）
-            if wakeEnabled && !speechAuthGranted {
+            // 「小麦小麦」唤醒：始终自动开启（无需任何按钮）
+            if !speechAuthGranted {
                 speechAuthGranted = await VoiceInputManager.requestAuthorization()
             }
-            if wakeEnabled && speechAuthGranted {
+            if speechAuthGranted {
                 voice.setWakeMode(true)
             }
         }
@@ -191,15 +189,10 @@ struct ChatView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                     Spacer()
-                    Button(voice.isTranscribing ? "取消" : "关闭唤醒") {
-                        if voice.isTranscribing {
-                            voice.stop()
-                        } else {
-                            wakeEnabled = false
-                            voice.setWakeMode(false)
-                        }
+                    if voice.isTranscribing {
+                        Button("取消") { voice.stop() }
+                            .font(.caption)
                     }
-                    .font(.caption)
                 }
                 .padding(.horizontal, 16)
                 .transition(.opacity)
@@ -227,23 +220,6 @@ struct ChatView: View {
                             .allowsHitTesting(false)
                     }
                 }
-
-                // 唤醒词开关（首次开启先申请语音权限，与麦克风一致）
-                Button {
-                    Task { @MainActor in
-                        if !speechAuthGranted {
-                            speechAuthGranted = await VoiceInputManager.requestAuthorization()
-                        }
-                        guard speechAuthGranted else { return }
-                        wakeEnabled.toggle()
-                        voice.setWakeMode(wakeEnabled)
-                    }
-                } label: {
-                    Image(systemName: wakeEnabled ? "ear.badge.waveform" : "ear")
-                        .font(.system(size: 17))
-                        .foregroundStyle(wakeEnabled ? Color.orange : Color.secondary)
-                }
-                .help(wakeEnabled ? "关闭「小麦小麦」唤醒" : "开启「小麦小麦」唤醒")
 
                 // 麦克风：语音留言（静音 2.5 秒自动发送；权限在点击时才申请）
                 // ⚠️ Catalyst 的 Button 手势回调不在 MainActor 执行器上：

@@ -51,7 +51,7 @@ final class VoiceInputManager {
     private var lastTextTime = Date()
     private var isStarting = false
     private var sessionCount = 0   // 日志用
-    private var wakeModeEnabled = false  // 唤醒词开关（App 输入栏按钮控制）
+    private var wakeModeEnabled = true   // 唤醒词常开（无按钮，App 启动即监听「小麦小麦」）
     private var isRearming = false       // 防重入：stop 后自动重新挂起唤醒监听
     private var rearmToken = 0           // 唤醒接管时作废所有待执行的自动重挂
     private var currentSessionEpoch = 0  // 会话代数：旧会话的迟到回调不得影响新会话
