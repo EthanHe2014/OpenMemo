@@ -33,7 +33,8 @@ final class AudioEngineBox: @unchecked Sendable {
 final class VoiceInputManager {
     /// 状态
     var isListening = false       // 音频引擎是否在跑
-    var isTranscribing = false    // 是否处于留言模式
+    var isTranscribing = false    // 是否处于留言模式（唤醒后 / 直接按麦）
+    var isWakeArmed = false       // 唤醒词待命中（听到 "hey memo" 才进入留言）
     var liveText = ""             // 实时转写文本（输入框用）
 
     /// 回调
@@ -50,6 +51,10 @@ final class VoiceInputManager {
     private var lastTextTime = Date()
     private var isStarting = false
     private var sessionCount = 0   // 日志用
+    private var wakeModeEnabled = false  // 唤醒词开关（App 输入栏按钮控制）
+    private var isRearming = false       // 防重入：stop 后自动重新挂起唤醒监听
+    private var rearmToken = 0           // 唤醒接管时作废所有待执行的自动重挂
+    private var stripAckUntil: Date?     // 留言会话初期：剥离服务器应答"我在"被麦克风拾取的残余
 
     // MARK: - 权限
 
@@ -66,10 +71,34 @@ final class VoiceInputManager {
 
     // MARK: - 控制
 
+    /// 开/关唤醒词监听（"hey memo" / "memo memo"）
+    func setWakeMode(_ enabled: Bool) {
+        wakeModeEnabled = enabled
+        if enabled {
+            startWakeListening()
+        } else {
+            if isWakeArmed && !isTranscribing {
+                stop()
+            }
+        }
+    }
+
+    /// 挂起唤醒监听：常听，命中 "hey memo" 才进入留言模式
+    func startWakeListening() {
+        guard !isStarting, !isListening, wakeModeEnabled else { return }
+        startEngine(wakeMode: true)
+    }
+
     /// 直接进入留言模式（用户点了麦克风）
     func startVoiceInput() {
         if isListening && isTranscribing { return }
-        startEngine()
+        if isListening {
+            // 唤醒监听中直接按麦：先停掉唤醒会话（禁止自动重挂），再开留言会话
+            isRearming = true
+            stop()
+            isRearming = false
+        }
+        startEngine(wakeMode: false)
     }
 
     /// 停止并彻底销毁本次会话的所有音频对象
@@ -87,12 +116,26 @@ final class VoiceInputManager {
         engine = nil
         isListening = false
         isTranscribing = false
+        isWakeArmed = false
         liveText = ""
         sessionCount += 1
         print("[语音] 会话结束 #\(sessionCount)，引擎已销毁")
+
+        // 唤醒词开着且本次不是手动接管 → 短暂延迟后自动重新挂起监听（免手无感续听）
+        if wakeModeEnabled && !isRearming {
+            isRearming = true
+            let token = rearmToken
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                // 若期间发生了唤醒接管（handleWakeWord），此重挂已作废
+                guard let self, token == self.rearmToken else { return }
+                self.isRearming = false
+                self.startWakeListening()
+            }
+        }
     }
 
-    private func startEngine() {
+    private func startEngine(wakeMode: Bool) {
         guard !isStarting, !isListening, let recognizer, recognizer.isAvailable else { return }
         isStarting = true
         sessionCount += 1
@@ -156,7 +199,8 @@ final class VoiceInputManager {
         }
 
         isListening = true
-        isTranscribing = true
+        isTranscribing = !wakeMode
+        isWakeArmed = wakeMode
         lastTextTime = Date()
         startSilenceTimer()
         isStarting = false
@@ -169,11 +213,61 @@ final class VoiceInputManager {
         }
     }
 
+    /// 唤醒命中后的完整流程：
+    /// 麦克风保持常听（不销毁会话！）→ 服务器 Edge TTS 应答"我在！"（边放边听，
+    /// 跟着应答说话也不丢字）→ 留言内容剥离开头噪音后照常转写
+    func handleWakeWord() async {
+        // 开留言会话；开头 3.5 秒内剥离开头噪音：唤醒词残余（小麦）与应答"我在"
+        stripAckUntil = Date().addingTimeInterval(3.5)
+        // 服务器朗读"我在！"（Xiaoxiao，与 AI 回复同声）；不销毁会话，
+        // 应答播放期间麦克风仍在听，用户紧跟说话不会丢
+        await OpenMemoAPI.shared.speak("我在！")
+    }
+
     // MARK: - 转写处理
 
     private func handle(text: String) {
-        liveText = text
-        lastTextTime = Date()
+        // 唤醒词模式：等 "小麦小麦"（zh-CN 识别，容忍同音字 "小卖"）
+        if isWakeArmed {
+            if text.lowercased().contains("小麦") || text.lowercased().contains("小卖") {
+                print("[语音] 唤醒词命中：\(text)")
+                isTranscribing = true
+                isWakeArmed = false
+                liveText = ""          // 唤醒词本身不算留言内容
+                lastTextTime = Date()
+                // 异步执行完整唤醒流程（应答"我在！"，麦克风全程不断）
+                Task { @MainActor in
+                    await self.handleWakeWord()
+                }
+            }
+            return
+        }
+        // 留言模式：持续更新，重置静音计时
+        if isTranscribing {
+            var t = text
+            // 开麦初期（唤醒刚命中）：剥离开头噪音——
+            // 唤醒词残余（小麦小麦）与服务器应答"我在！"被麦克风拾取的部分
+            if let until = stripAckUntil, Date() < until {
+                var stripped = true
+                while stripped && !t.isEmpty {
+                    stripped = false
+                    for prefix in ["小麦小麦", "小麦", "小卖", "我在，", "我在。", "我在！", "我在"] {
+                        if t.hasPrefix(prefix) {
+                            t = String(t.dropFirst(prefix.count))
+                            stripped = true
+                            break
+                        }
+                    }
+                }
+                if t.isEmpty {
+                    // 只有噪音：不更新文本，但刷新静音计时（应答播放期间会话保持存活）
+                    lastTextTime = Date()
+                    return
+                }
+            }
+            liveText = t
+            lastTextTime = Date()
+        }
     }
 
     private func startSilenceTimer() {

@@ -148,4 +148,14 @@ final class OpenMemoAPI: @unchecked Sendable {
         req.timeoutInterval = 5
         _ = try? await URLSession.shared.data(for: req)
     }
+
+    /// 服务端 Edge TTS 朗读一段文字（等播放完成才返回，用于唤醒应答"我在！"）
+    func speak(_ text: String) async {
+        var req = URLRequest(url: URL(string: "\(baseURL)/api/speak")!)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONEncoder().encode(["text": text])
+        req.timeoutInterval = 30
+        _ = try? await URLSession.shared.data(for: req)
+    }
 }
