@@ -2,22 +2,30 @@ import Foundation
 import Speech
 import AVFoundation
 
-/// 语音输入管理器：STT 语音留言 + 静音 2 秒自动发送 + "memo memo" 唤醒词。
-/// 前台常听（唤醒词模式）时丢弃普通语音，识别到 "memo memo" 后进入留言模式，
-/// 留言结束（2 秒无新语音）自动回调提交。
+/// 语音输入管理器：STT 语音留言 + 静音 2 秒自动发送。
 ///
-/// 注意（Catalyst 血泪教训）：
-/// - 完成回调在后台线程 → 闭包必须 @Sendable，数据先取出再跳 MainActor
-/// - AVAudioEngine.start() 在 Catalyst + USB 麦克风上可能卡住 → 必须在后台线程启动，
-///   绝不能在主线程调用（否则 App 无响应）
+/// ⚠️ Catalyst 血泪教训（不要再"优化"回去）：
+/// 1. **每次会话全新 AVAudioEngine + 全新 recognition request**，stop 后彻底销毁。
+///    复用同一个引擎（start/stop/installTap/removeTap 循环）会触发
+///    "nullptr == Tap()" / 状态残留崩溃——这是"只能用一次"的根源。
+/// 2. 音频 tap 回调线程不是 MainActor → 闭包必须显式 @Sendable，
+///    语法是 `{ @Sendable (参数) in }`（@Sendable 修饰整个闭包）。
+///    写 `{ @Sendable 参数 in }` 只会标记参数，闭包仍继承 MainActor → 照样崩溃。
+///    Swift 6 下捕获非 Sendable 的 req 会报 data race → 用 RecognitionRequestBox 中转。
+/// 3. AVAudioEngine.start() 在 Catalyst + USB 麦克风上会卡住主线程 → 必须 Task.detached 后台启动。
+/// 4. 完成回调在后台线程 → 先取出 String，再 Task { @MainActor } 跳回主线程。
+/// 5. SwiftUI Button 手势回调在 Catalyst 上不在 MainActor 执行器 → 按钮动作里
+///    不能直接碰 @MainActor 状态，全部包进 Task { @MainActor }。
+
 /// 非 Sendable 对象的线程安全盒子（音频回调线程往里 append 缓冲）
 final class RecognitionRequestBox: @unchecked Sendable {
     var request: SFSpeechAudioBufferRecognitionRequest?
 }
 
-/// AVAudioEngine 盒子：允许在后台线程 start()（Catalyst 上主线程 start 会卡死 App）
+/// 引擎盒子：允许在后台线程 start()（Swift 6 sending 检查要求捕获 Sendable 值）
 final class AudioEngineBox: @unchecked Sendable {
-    let engine = AVAudioEngine()
+    let engine: AVAudioEngine
+    init(_ engine: AVAudioEngine) { self.engine = engine }
 }
 
 @MainActor
@@ -25,32 +33,29 @@ final class AudioEngineBox: @unchecked Sendable {
 final class VoiceInputManager {
     /// 状态
     var isListening = false       // 音频引擎是否在跑
-    var isTranscribing = false    // 是否处于留言模式（唤醒后 / 直接按麦）
+    var isTranscribing = false    // 是否处于留言模式
     var liveText = ""             // 实时转写文本（输入框用）
 
     /// 回调
     var onMessageReady: ((String) -> Void)?   // 留言结束（静音2秒）→ 提交
-    var onWakeWord: (() -> Void)?             // 唤醒词触发（可用来震动/提示）
 
     private let recognizer: SFSpeechRecognizer? =
         SFSpeechRecognizer(locale: Locale(identifier: "zh-CN"))
-    private let engineBox = AudioEngineBox()
-    private let reqBox = RecognitionRequestBox()
-    nonisolated(unsafe) private var request: SFSpeechAudioBufferRecognitionRequest?
-    private var recognitionTask: SFSpeechRecognitionTask?
 
-    private var wakeArmed = true              // 唤醒词监听中
-    private var lastTextTime = Date()
+    // ⚠️ 每会话状态：全部在 start 时新建、stop 时销毁。绝不跨会话复用。
+    private var engine: AVAudioEngine?
+    private let reqBox = RecognitionRequestBox()   // @unchecked Sendable：音频线程往里 append
+    private var recognitionTask: SFSpeechRecognitionTask?
     private var silenceTimer: Timer?
+    private var lastTextTime = Date()
     private var isStarting = false
-    private var tapInstalled = false          // tap 只装一次，常驻
+    private var sessionCount = 0   // 日志用
 
     // MARK: - 权限
 
     nonisolated static func requestAuthorization() async -> Bool {
         await withCheckedContinuation { cont in
-            // 完成回调在后台线程：闭包必须 @Sendable（不继承 MainActor），
-            // 再 Task { @MainActor } 跳回主线程 resume，否则 Swift 6 隔离断言崩溃
+            // 完成回调在后台线程：闭包必须 @Sendable，再 Task { @MainActor } 跳回主线程
             SFSpeechRecognizer.requestAuthorization { @Sendable status in
                 Task { @MainActor in
                     cont.resume(returning: status == .authorized)
@@ -61,40 +66,37 @@ final class VoiceInputManager {
 
     // MARK: - 控制
 
-    /// 开始聆听（唤醒词模式：听到 "memo memo" 才进入留言）
-    func startWakeListening() {
-        startEngine(wakeMode: true)
-    }
-
     /// 直接进入留言模式（用户点了麦克风）
     func startVoiceInput() {
         if isListening && isTranscribing { return }
-        startEngine(wakeMode: false)
+        startEngine()
     }
 
-    /// 停止聆听（取消/退出）
+    /// 停止并彻底销毁本次会话的所有音频对象
     func stop() {
         silenceTimer?.invalidate()
         silenceTimer = nil
         recognitionTask?.cancel()
         recognitionTask = nil
-        request?.endAudio()
-        request = nil
+        reqBox.request?.endAudio()
         reqBox.request = nil
-        // 只停引擎，不 removeTap：tap 常驻，避免重复 installTap 触发
-        // "required condition is false: nullptr == Tap()" 崩溃
-        if engineBox.engine.isRunning {
-            engineBox.engine.stop()
+        if let engine {
+            if engine.isRunning { engine.stop() }
+            engine.inputNode.removeTap(onBus: 0)
         }
+        engine = nil
         isListening = false
         isTranscribing = false
-        wakeArmed = true
         liveText = ""
+        sessionCount += 1
+        print("[语音] 会话结束 #\(sessionCount)，引擎已销毁")
     }
 
-    private func startEngine(wakeMode: Bool) {
+    private func startEngine() {
         guard !isStarting, !isListening, let recognizer, recognizer.isAvailable else { return }
         isStarting = true
+        sessionCount += 1
+        print("[语音] 会话开始 #\(sessionCount)：全新引擎 + 全新 request")
 
         do {
             let session = AVAudioSession.sharedInstance()
@@ -104,14 +106,18 @@ final class VoiceInputManager {
             print("[语音] 音频会话失败：\(error.localizedDescription)")
         }
 
+        // 全新 request —— 只属于本次会话
         let req = SFSpeechAudioBufferRecognitionRequest()
         req.shouldReportPartialResults = true
         req.taskHint = .dictation
-        request = req
         reqBox.request = req
 
+        // 全新引擎 —— 只属于本次会话（绝不复用，避免 tap 状态残留）
+        let engine = AVAudioEngine()
+        self.engine = engine
+
         recognitionTask = recognizer.recognitionTask(with: req) { @Sendable [weak self] result, error in
-            // 在后台线程先取出 Sendable 数据（String），避免把非 Sendable 的 result 传进 MainActor
+            // 后台线程先取出 Sendable 数据，再跳 MainActor
             let text = result?.bestTranscription.formattedString ?? ""
             let shouldCleanup = (error != nil) || (result?.isFinal == true)
             Task { @MainActor in
@@ -120,29 +126,27 @@ final class VoiceInputManager {
                     self.handle(text: text)
                 }
                 if shouldCleanup {
-                    // 引擎自动结束（如长时间静音）——静默重挂
-                    self.cleanupEngine()
+                    self.stop()
                 }
             }
         }
 
-        let format = engineBox.engine.inputNode.outputFormat(forBus: 0)
+        let format = engine.inputNode.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else {
             print("[语音] 没有可用的麦克风输入格式")
             isStarting = false
             return
         }
-        // 音频线程回调：通过 Sendable 盒子追加缓冲（不能捕获非 Sendable 的 req）
-        let box = reqBox
-        // ⚠️ tap 闭包在音频实时线程调用：必须显式 @Sendable，否则继承 MainActor 隔离 → 崩溃/无响应
-        engineBox.engine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { @Sendable (buffer, _) in
-            box.request?.append(buffer)
-        }
-        engineBox.engine.prepare()
 
-        // ⚠️ 关键：Catalyst 上 audioEngine.start() 可能卡住（USB 麦克风），
-        // 必须在后台线程启动，主线程保持响应
-        let engBox = engineBox
+        // ⚠️ 正确写法：@Sendable 修饰整个闭包（音频线程可安全调用）；
+        // 在 nonisolated 静态方法里安装 tap：避免 Swift 6 "sending" 参数检查
+        // （MainActor 上下文创建的闭包传给 sending 参数会报 data race）
+        Self.installTap(on: engine, format: format, box: reqBox)
+        engine.prepare()
+
+        // ⚠️ Catalyst 上 start() 可能卡住 → 后台线程启动；
+        // 捕获 Sendable 盒子（sending 检查不允许捕获 MainActor 上下文创建的局部对象）
+        let engBox = AudioEngineBox(engine)
         Task.detached(priority: .userInitiated) {
             do {
                 try engBox.engine.start()
@@ -152,48 +156,24 @@ final class VoiceInputManager {
         }
 
         isListening = true
-        isTranscribing = !wakeMode
-        wakeArmed = wakeMode
+        isTranscribing = true
         lastTextTime = Date()
         startSilenceTimer()
         isStarting = false
     }
 
-    private func cleanupEngine() {
-        silenceTimer?.invalidate()
-        silenceTimer = nil
-        recognitionTask?.cancel()
-        recognitionTask = nil
-        request = nil
-        reqBox.request = nil
-        if engineBox.engine.isRunning {
-            engineBox.engine.stop()
+    /// nonisolated：闭包在非隔离上下文创建，音频实时线程直接调用
+    nonisolated private static func installTap(on engine: AVAudioEngine, format: AVAudioFormat, box: RecognitionRequestBox) {
+        engine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+            box.request?.append(buffer)
         }
-        isListening = false
-        isTranscribing = false
-        wakeArmed = true
     }
 
     // MARK: - 转写处理
 
     private func handle(text: String) {
         liveText = text
-        // 唤醒词模式：等 "memo memo"
-        if wakeArmed && !isTranscribing {
-            let lower = text.lowercased()
-            if lower.contains("memo memo") || lower.contains("memo memo memo") {
-                isTranscribing = true
-                wakeArmed = false
-                liveText = ""          // 唤醒词本身不算留言
-                lastTextTime = Date()
-                onWakeWord?()
-            }
-            return
-        }
-        // 留言模式：持续更新，重置静音计时
-        if isTranscribing {
-            lastTextTime = Date()
-        }
+        lastTextTime = Date()
     }
 
     private func startSilenceTimer() {
@@ -210,9 +190,8 @@ final class VoiceInputManager {
         guard isTranscribing else { return }
         let idle = Date().timeIntervalSince(lastTextTime)
         if idle >= 2.0 {
-            let text = liveText.trimmingCharacters(in: .whitespacesAndNewlines)
-            let finalText = text
-            // 提交前先停引擎，避免重复触发
+            let finalText = liveText.trimmingCharacters(in: .whitespacesAndNewlines)
+            // 先彻底销毁会话，再回调提交（避免重复触发）
             stop()
             if !finalText.isEmpty {
                 onMessageReady?(finalText)
