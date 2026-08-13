@@ -132,7 +132,8 @@ final class VoiceInputManager {
         }
         // 音频线程回调：通过 Sendable 盒子追加缓冲（不能捕获非 Sendable 的 req）
         let box = reqBox
-        engineBox.engine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+        // ⚠️ tap 闭包在音频实时线程调用：必须显式 @Sendable，否则继承 MainActor 隔离 → 崩溃/无响应
+        engineBox.engine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { @Sendable buffer, _ in
             box.request?.append(buffer)
         }
         engineBox.engine.prepare()
