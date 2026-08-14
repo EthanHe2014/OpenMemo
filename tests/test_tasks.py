@@ -94,6 +94,41 @@ class TestTaskManager:
         # High priority should come first
         assert tasks[0]["priority"] == "high"
 
+    def test_delete_finished_old(self, task_manager):
+        """已完结超 24h 的任务被清理；待办任务绝不动。"""
+        import openmemo.tasks as tasks_module
+        import sqlite3
+
+        # 建 4 个任务
+        done_old = task_manager.add_task("老完成", priority="medium")
+        done_new = task_manager.add_task("新完成", priority="medium")
+        cancelled_old = task_manager.add_task("老取消", priority="medium")
+        pending = task_manager.add_task("待办", priority="medium")
+
+        # 完成/取消
+        task_manager.complete_task(done_old["task_id"])
+        task_manager.complete_task(done_new["task_id"])
+        task_manager.cancel_task(cancelled_old["task_id"])
+
+        # 把 done_old / cancelled_old 的 updated_at 改到 25 小时前
+        conn = tasks_module.get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE tasks SET updated_at = datetime('now', 'localtime', '-25 hours') WHERE task_id IN (?, ?)",
+            (done_old["task_id"], cancelled_old["task_id"]),
+        )
+        conn.commit()
+        conn.close()
+
+        deleted = task_manager.delete_finished_old(older_than_hours=24)
+        assert deleted == 2, f"应删除 2 条，实际 {deleted}"
+
+        # 老的任务没了，新的完成/取消还在，待办还在
+        assert task_manager.get_task(done_old["task_id"]) is None
+        assert task_manager.get_task(cancelled_old["task_id"]) is None
+        assert task_manager.get_task(done_new["task_id"]) is not None
+        assert task_manager.get_task(pending["task_id"]) is not None
+
 
 class TestConversationManager:
     def test_add_and_get_history(self, conv_manager):

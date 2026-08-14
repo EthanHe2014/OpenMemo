@@ -246,6 +246,24 @@ class TaskManager:
         conn.commit()
         conn.close()
         return affected > 0
+
+    def delete_finished_old(self, older_than_hours: int = 24) -> int:
+        """清理已完结（completed/cancelled）且超过 N 小时的任务。
+        返回删除条数。待办（pending）任务绝不动。"""
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            """DELETE FROM tasks
+               WHERE status IN ('completed', 'cancelled')
+                 AND updated_at < datetime('now', 'localtime', ?)""",
+            (f"-{int(older_than_hours)} hours",),
+        )
+        affected = cursor.rowcount
+        conn.commit()
+        conn.close()
+        if affected:
+            print(f"[清理] 删除 {affected} 个已完结超 {older_than_hours}h 的任务")
+        return affected
     
     def get_pending_reminders(self) -> List[dict]:
         """Get tasks that need reminders (trigger_time <= now, not yet reminded)"""

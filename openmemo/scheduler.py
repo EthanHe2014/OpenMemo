@@ -373,6 +373,29 @@ def start_scheduler():
     scheduler.start()
     print("[调度器] 已启动")
     start_watchdog()
+    start_cleanup_job()
+
+
+def start_cleanup_job():
+    """定期清理已完结超 24h 的任务（每 6 小时一次，启动时也立即跑一次）。"""
+    from apscheduler.triggers.interval import IntervalTrigger
+
+    def cleanup_tick():
+        try:
+            task_manager.delete_finished_old(older_than_hours=24)
+        except Exception as e:
+            print(f"[清理] 出错：{e}")
+
+    # 启动立即清一次 + 每 6 小时一次
+    cleanup_tick()
+    scheduler.add_job(
+        cleanup_tick,
+        IntervalTrigger(hours=6),
+        id="cleanup_finished_tasks",
+        replace_existing=True,
+        max_instances=1,
+    )
+    print("[清理] 已启动（每 6 小时清理已完结超 24h 的任务）")
 
 
 def start_watchdog():
