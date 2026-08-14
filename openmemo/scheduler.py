@@ -243,8 +243,10 @@ def _next_occurrence(task: dict, recurring: str):
     recurring_lower = (recurring or "").lower()
     now = datetime.now()
 
-    # 任务原定的时分（循环任务每天/每周都在这个点触发）
-    hour, minute = now.hour, now.minute
+    def at(y, mo, d):
+        return datetime(y, mo, d, hour, minute)
+
+    base = None  # 触发时间解析结果（用于取原定时分/日）
     tt = task.get("trigger_time")
     if tt:
         try:
@@ -252,9 +254,6 @@ def _next_occurrence(task: dict, recurring: str):
             hour, minute = base.hour, base.minute
         except (ValueError, TypeError):
             pass
-
-    def at(y, mo, d):
-        return datetime(y, mo, d, hour, minute)
 
     if recurring_lower in ("每天", "daily"):
         return at(now.year, now.month, now.day) + timedelta(days=1)
@@ -291,8 +290,8 @@ def _next_occurrence(task: dict, recurring: str):
         if m:
             day = int(m.group(1))
         else:
-            # 没有具体日号 → 用触发时间的日
-            day = base.day if 'base' in dir() else now.day
+            # 没有具体日号 → 用触发时间的日（base 可能未定义，安全回退今天）
+            day = base.day if base else now.day
         year, month = now.year, now.month
         for _ in range(13):
             month += 1

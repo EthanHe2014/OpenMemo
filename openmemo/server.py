@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="OpenMemo",
     description="AI-powered personal voice assistant with memory",
-    version="0.1.0",
+    version="1.0.0",
     lifespan=lifespan
 )
 
@@ -73,7 +73,7 @@ async def health_check():
     """Health check endpoint"""
     return {
         "name": "OpenMemo",
-        "version": "0.1.0",
+        "version": "1.0.0",
         "status": "running",
         "model": AI_MODEL or ""
     }
@@ -138,11 +138,15 @@ async def create_task(request: Request):
 
 @app.patch("/api/tasks/{task_id}")
 async def update_task(task_id: int, request: Request):
-    """Update a task"""
+    """Update a task (reschedules when trigger_time changes)"""
     body = await request.json()
     task = task_manager.update_task(task_id, **body)
     if not task:
         return JSONResponse({"error": "Task not found"}, status_code=404)
+    # 时间变了 → 重新调度提醒（旧 job 会被 replace_existing 覆盖）
+    if "trigger_time" in body:
+        from .scheduler import schedule_task
+        schedule_task(task["task_id"], task["trigger_time"])
     return {"task": task, "success": True}
 
 

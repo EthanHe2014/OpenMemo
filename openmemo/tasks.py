@@ -375,18 +375,20 @@ class ConversationManager:
         conn.close()
     
     def get_history(self, session_id: str, limit: int = 10) -> list:
-        """Get recent conversation history for a session"""
+        """Get recent conversation history for a session (NEWEST `limit` messages, chronological)."""
         conn = get_db()
         cursor = conn.cursor()
+        # DESC + 外部反转：取最新的 limit 条，再按时间正序返回给调用方
         cursor.execute("""
-        SELECT * FROM conversations 
-        WHERE session_id = ? 
-        ORDER BY conv_id ASC LIMIT ?
+            SELECT * FROM (
+                SELECT * FROM conversations
+                WHERE session_id = ?
+                ORDER BY conv_id DESC LIMIT ?
+            ) ORDER BY conv_id ASC
         """, (session_id, limit))
         rows = cursor.fetchall()
         conn.close()
         
-        # Return in chronological order (already ASC by conv_id)
         messages = []
         for row in rows:
             msg = {"role": row["role"], "content": row["content"]}

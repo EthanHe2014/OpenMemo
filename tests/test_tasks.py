@@ -142,4 +142,24 @@ class TestConversationManager:
         assert len(context) == 2
         assert context[0] == {"role": "user", "content": "Hello"}
 
+    def test_get_history_returns_newest_first_window(self, conv_manager):
+        """回归测试：历史必须返回【最新】的 limit 条（按时间正序），
+        而不是最早的那几条——否则长对话里 AI 看不到最近上下文。"""
+        for i in range(1, 8):
+            conv_manager.add_message("s_hist", "user", f"msg-{i}")
+
+        history = conv_manager.get_history("s_hist", limit=3)
+        assert len(history) == 3
+        # 应该是最新的 3 条：msg-5/6/7（正序）
+        assert [m["content"] for m in history] == ["msg-5", "msg-6", "msg-7"]
+
+    def test_get_context_for_ai_uses_latest(self, conv_manager):
+        """回归测试：AI 上下文应基于最近消息（V1.0 修复的 get_history 顺序 bug）。"""
+        for i in range(1, 10):
+            conv_manager.add_message("s_ctx", "user", f"ctx-{i}")
+
+        context = conv_manager.get_context_for_ai("s_ctx", limit=4)
+        contents = [m["content"] for m in context]
+        assert contents == ["ctx-6", "ctx-7", "ctx-8", "ctx-9"]
+
 
