@@ -174,7 +174,9 @@ def _extract_json(content: str) -> dict | None:
     content = content.strip()
 
     try:
-        return json.loads(content)
+        obj = json.loads(content)
+        # 只接受 dict（AI 契约是对象）；list/其它类型不是合法回复
+        return obj if isinstance(obj, dict) and obj else None
     except json.JSONDecodeError:
         pass
 
