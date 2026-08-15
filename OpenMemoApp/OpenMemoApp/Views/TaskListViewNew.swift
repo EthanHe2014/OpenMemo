@@ -4,8 +4,6 @@ struct TaskListViewNew: View {
     @Environment(TaskListViewModel.self) private var taskVM
     @State private var selectedFilter: TaskFilter = .all
     @State private var showingAddTask = false
-    @State private var isDeleteZoneTargeted = false
-    @State private var deleteZoneVisible = true
     
     enum TaskFilter: String, CaseIterable {
         case all = "全部"
@@ -36,16 +34,6 @@ struct TaskListViewNew: View {
                 // Task list
                 taskList
             }
-        }
-        .overlay(alignment: .leading) {
-            // 左侧删除区：贴住窗口左缘，平时半透明，拖任务悬停时亮红
-            DeleteDropZone(isTargeted: $isDeleteZoneTargeted) { taskId in
-                if let task = taskVM.tasks.first(where: { $0.taskId == taskId }) {
-                    Task { await taskVM.delete(task) }
-                }
-            }
-            .padding(.leading, 10)
-            .opacity(deleteZoneVisible ? 1 : 0.55)
         }
         .sheet(isPresented: $showingAddTask) {
             AddTaskView()
@@ -451,8 +439,6 @@ struct TaskCard: View {
     let onToggle: () -> Void
     let onDelete: () -> Void
     
-    @State private var isPressed = false
-    
     var body: some View {
         HStack(spacing: 14) {
             // Status indicator
@@ -494,17 +480,6 @@ struct TaskCard: View {
         .hoverGlow()
         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .onTapGesture { onToggle() }
-        .scaleEffect(isPressed ? 0.98 : 1)
-        .animation(.easeInOut(duration: 0.15), value: isPressed)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in isPressed = true }
-                .onEnded { _ in isPressed = false }
-        )
-        // 拖拽删除：提起卡片（带投影），拖到左侧删除区松手即删
-        .draggable(TaskDragPayload(taskId: task.taskId)) {
-            TaskDragPreview(task: task)
-        }
     }
     
     private var statusIndicator: some View {
@@ -618,100 +593,4 @@ struct TaskCard: View {
     TaskListViewNew()
         .environment(TaskListViewModel())
         .preferredColorScheme(.dark)
-}
-
-// MARK: - 拖拽删除
-
-/// 拖拽载荷：携带任务 id（Transferable，跨视图/跨窗口拖放）
-struct TaskDragPayload: Codable, Transferable {
-    let taskId: Int
-    
-    static var transferRepresentation: some TransferRepresentation {
-        CodableRepresentation(contentType: .plainText)
-    }
-}
-
-/// 拖拽中的“悬浮卡片”预览：真实阴影 + 微旋转，像拎在手里
-struct TaskDragPreview: View {
-    let task: OpenMemoTask
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            Circle()
-                .fill(OMColors.priority(task.priority))
-                .frame(width: 12, height: 12)
-            
-            VStack(alignment: .leading, spacing: 3) {
-                Text(task.content)
-                    .font(OMFonts.subheadline.weight(.medium))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                if let t = task.triggerTime {
-                    Text(TaskListHelpers.relativeTime(t))
-                        .font(OMFonts.caption2)
-                        .foregroundStyle(.white.opacity(0.6))
-                }
-            }
-            
-            Image(systemName: "trash")
-                .font(.caption)
-                .foregroundStyle(OMColors.error.opacity(0.8))
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .frame(width: 240, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(OMColors.surfaceElevated)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(OMColors.error.opacity(0.4), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.55), radius: 24, x: 0, y: 14)
-        .rotationEffect(.degrees(-2))
-    }
-}
-
-/// 左侧删除区：平时半透明窄条，拖任务悬停时亮红 + 展开
-struct DeleteDropZone: View {
-    @Binding var isTargeted: Bool
-    let onDrop: (Int) -> Void
-    
-    var body: some View {
-        ZStack(alignment: .center) {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(isTargeted ? OMColors.error : Color.white.opacity(0.06))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(isTargeted ? OMColors.error.opacity(0.8) : Color.white.opacity(0.12), lineWidth: 1.5)
-                )
-                .shadow(color: isTargeted ? OMColors.error.opacity(0.6) : .clear, radius: isTargeted ? 24 : 0)
-                .frame(width: isTargeted ? 88 : 56)
-                .animation(OMAnimations.spring, value: isTargeted)
-            
-            VStack(spacing: 8) {
-                Image(systemName: isTargeted ? "trash.fill" : "trash")
-                    .font(.system(size: isTargeted ? 26 : 20, weight: .semibold))
-                    .foregroundStyle(isTargeted ? .white : .white.opacity(0.4))
-                
-                if isTargeted {
-                    Text("松手删除")
-                        .font(OMFonts.caption2.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .transition(.opacity)
-                }
-            }
-        }
-        .frame(width: 88)
-        .frame(maxHeight: .infinity)
-        .contentShape(Rectangle())
-        .dropDestination(for: TaskDragPayload.self) { payloads, _ in
-            guard let first = payloads.first else { return false }
-            onDrop(first.taskId)
-            return true
-        } isTargeted: { targeted in
-            isTargeted = targeted
-        }
-    }
 }
