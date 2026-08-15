@@ -541,22 +541,7 @@ struct TaskCard: View {
     }
     
     private var deleteButton: some View {
-        Button {
-            onDelete()
-        } label: {
-            ZStack {
-                Circle()
-                    .fill(Color.white.opacity(0.08))
-                    .frame(width: 30, height: 30)
-                
-                Image(systemName: "trash")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.55))
-            }
-        }
-        .buttonStyle(.plain)
-        .hoverGlow(cornerRadius: 15)
-        .help("删除任务（或拖到左侧红色区域）")
+        HoverableDeleteButton(onDelete: onDelete)
     }
     
     private var borderColor: Color {
@@ -593,4 +578,32 @@ struct TaskCard: View {
     TaskListViewNew()
         .environment(TaskListViewModel())
         .preferredColorScheme(.dark)
+}
+
+/// 垃圾桶按钮：悬停时图标变红 + 红色辉光 + 微放大
+struct HoverableDeleteButton: View {
+    let onDelete: () -> Void
+    @State private var isHovered = false
+    
+    var body: some View {
+        Button(action: onDelete) {
+            ZStack {
+                Circle()
+                    .fill(isHovered ? OMColors.error.opacity(0.22) : Color.white.opacity(0.08))
+                    .frame(width: 30, height: 30)
+                
+                Image(systemName: "trash")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(isHovered ? OMColors.error : .white.opacity(0.55))
+            }
+            .scaleEffect(isHovered ? 1.1 : 1)
+            .shadow(color: isHovered ? OMColors.error.opacity(0.6) : .clear, radius: isHovered ? 10 : 0)
+            .animation(.easeInOut(duration: 0.15), value: isHovered)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovered = hovering
+        }
+        .help("删除任务")
+    }
 }
