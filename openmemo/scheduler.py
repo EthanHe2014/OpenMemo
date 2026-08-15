@@ -707,13 +707,16 @@ async def _search_news(provider: str, api_key: str, base_url: str, topic: str) -
 async def _fetch_news(topic: str, max_retries: int = 2) -> str:
     """获取实时新闻：按 SEARCH_PROVIDER 调用外部搜索，失败则重试再降级由 AI 生成。"""
     try:
-        from .config import SEARCH_PROVIDER, SEARCH_API_KEY, SEARCH_BASE_URL
-        if not SEARCH_PROVIDER or not SEARCH_API_KEY:
+        from .config import search_provider, search_api_key, search_base_url
+        provider = search_provider()
+        api_key = search_api_key()
+        base_url = search_base_url()
+        if not provider or not api_key:
             return "（无外部新闻源，AI生成内容）"
         last_err = ""
         for attempt in range(max_retries + 1):
             try:
-                text = await _search_news(SEARCH_PROVIDER, SEARCH_API_KEY, SEARCH_BASE_URL, topic)
+                text = await _search_news(provider, api_key, base_url, topic)
                 if text.strip():
                     return text
                 last_err = "空结果"

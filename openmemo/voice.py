@@ -5,7 +5,7 @@ import re
 import subprocess
 import hashlib
 from pathlib import Path
-from .config import TTS_VOICE, AUDIO_DIR
+from .config import tts_voice, AUDIO_DIR
 
 # 要读出来的文字里不允许出现 emoji（Edge TTS 会把 emoji 读出来/读成乱码）
 _EMOJI_RE = re.compile(
@@ -44,7 +44,7 @@ async def generate_speech(text: str, voice: str = None, rate: str = "+0%") -> Pa
     """
     import edge_tts
 
-    voice = voice or TTS_VOICE
+    voice = voice or tts_voice()
     # TTS 不读 emoji（Edge TTS 会把 emoji 念出来）
     text = strip_emojis(text)
     if not text:

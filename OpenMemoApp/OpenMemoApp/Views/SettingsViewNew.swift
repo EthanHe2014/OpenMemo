@@ -11,6 +11,10 @@ struct SettingsViewNew: View {
     @State private var healthStatus: String? = nil
     @AppStorage("wakeWordEnabled") private var wakeWordEnabled = true
     @State private var showingClearConfirmation = false
+    @State private var aiModel = ""
+    @State private var ttsVoice = ""
+    @State private var serverSettingsLoaded = false
+    @State private var settingsSaved = false
 
     init() {
         // 启动时把持久化的地址应用到 API 客户端
@@ -104,6 +108,63 @@ struct SettingsViewNew: View {
                         }
                     }
 
+                    // AI 模型 & 语音（服务端设置，存 settings.json，热生效）
+                    settingsSection(title: "AI 设置") {
+                        VStack(alignment: .leading, spacing: 14) {
+                            Text("AI 模型")
+                                .font(OMFonts.subheadline)
+                                .foregroundStyle(.white.opacity(0.7))
+                            
+                            TextField("模型 id，如 deepseek-v4-flash", text: $aiModel)
+                                .font(OMFonts.body)
+                                .foregroundStyle(.white)
+                                .padding()
+                                .glass(cornerRadius: 14)
+                                .autocapitalization(.none)
+                                .onChange(of: aiModel) { _, _ in settingsSaved = false }
+                            
+                            Text("语音角色")
+                                .font(OMFonts.subheadline)
+                                .foregroundStyle(.white.opacity(0.7))
+                                .padding(.top, 4)
+                            
+                            TextField("如 zh-CN-XiaoxiaoNeural", text: $ttsVoice)
+                                .font(OMFonts.body)
+                                .foregroundStyle(.white)
+                                .padding()
+                                .glass(cornerRadius: 14)
+                                .autocapitalization(.none)
+                                .onChange(of: ttsVoice) { _, _ in settingsSaved = false }
+                            
+                            HStack {
+                                Button {
+                                    saveServerSettings()
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "externaldrive.fill")
+                                        Text("保存 AI 设置")
+                                    }
+                                    .font(OMFonts.subheadline.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 10)
+                                    .glass(cornerRadius: 12)
+                                    .hoverGlow(cornerRadius: 12)
+                                }
+                                .buttonStyle(.plain)
+                                
+                                Spacer()
+                                
+                                if settingsSaved {
+                                    Label("已保存", systemImage: "checkmark.circle.fill")
+                                        .font(OMFonts.caption)
+                                        .foregroundStyle(OMColors.success)
+                                }
+                            }
+                            .padding(.top, 4)
+                        }
+                    }
+                    
                     // Voice section
                     settingsSection(title: "语音") {
                         Toggle(isOn: $wakeWordEnabled) {
@@ -200,6 +261,43 @@ struct SettingsViewNew: View {
         }
         .task {
             check()
+            await loadServerSettings()
+        }
+    }
+
+    /// 从服务端拉取 AI 设置（模型/语音）。
+    private func loadServerSettings() async {
+        guard !serverSettingsLoaded else { return }
+        do {
+            let resp = try await OpenMemoAPI.shared.getSettings()
+            if let m = resp.settings["ai_model"]?.value { aiModel = m }
+            if let v = resp.settings["tts_voice"]?.value { ttsVoice = v }
+            serverSettingsLoaded = true
+        } catch {
+            // 服务端不支持时静默，不阻塞设置页
+        }
+    }
+
+    /// 保存 AI 设置到服务端（settings.json，热生效）。
+    private func saveServerSettings() {
+        let trimmedModel = aiModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedVoice = ttsVoice.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedModel.isEmpty, !trimmedVoice.isEmpty else { return }
+        Task {
+            do {
+                _ = try await OpenMemoAPI.shared.updateSettings([
+                    "ai_model": trimmedModel,
+                    "tts_voice": trimmedVoice,
+                ])
+                await MainActor.run {
+                    settingsSaved = true
+                    healthStatus = "已保存"
+                }
+            } catch {
+                await MainActor.run {
+                    healthStatus = "保存失败：\(error.localizedDescription)"
+                }
+            }
         }
     }
 

@@ -136,6 +136,39 @@ class TestSchedulerIntegration:
         assert str(job.trigger) == str(scheduler.get_job(f"task_{t['task_id']}").trigger)
 
 
+class TestSettingsAPI:
+    def test_get_settings(self):
+        r = client.get("/api/settings")
+        assert r.status_code == 200
+        s = r.json()["settings"]
+        assert "ai_model" in s
+        assert "tts_voice" in s
+
+    def test_patch_settings_persists(self):
+        # 先设置
+        r = client.patch("/api/settings", json={"tts_voice": "zh-CN-YunxiNeural"})
+        assert r.status_code == 200
+        assert "tts_voice" in r.json()["updated"]
+        # 再读取
+        r = client.get("/api/settings")
+        assert r.json()["settings"]["tts_voice"]["value"] == "zh-CN-YunxiNeural"
+        # 清理：回退
+        client.patch("/api/settings", json={"tts_voice": ""})
+
+    def test_patch_unknown_key_ignored(self):
+        r = client.patch("/api/settings", json={"not_a_real_key": "x"})
+        assert r.status_code == 200
+        assert r.json()["updated"] == []
+
+    def test_secret_masked(self):
+        r = client.get("/api/settings")
+        s = r.json()["settings"]
+        key = s["ai_api_key"]["value"]
+        # 要么空要么脱敏（不含完整密钥格式）
+        if key:
+            assert "…" in key or key == "****"
+
+
 class TestReminderAndAlert:
     def test_reminders_endpoint(self):
         r = client.get("/api/reminders")

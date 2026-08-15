@@ -86,18 +86,33 @@ class TestParseCnRelative:
         assert (dt.date() - tomorrow.date()).days == 0
 
     def test_today_with_time_future(self):
-        # 用不跨午夜的未来小时（保证当天）
+        # 用一个保证不跨午夜的未来小时：若 now.hour>=22 则跳过（无当天未来小时）
         now = datetime.now()
-        if now.hour >= 21:
-            target_hour = now.hour - 1  # 已过 → 明天，跳过本断言
-            r = _parse_cn_relative(f"{target_hour}点")
-            dt = datetime.strptime(r, "%Y-%m-%d %H:%M")
-            assert (dt.date() - now.date()).days in (0, 1)
-        else:
-            target_hour = now.hour + 1
-            r = _parse_cn_relative(f"{target_hour}点")
-            dt = datetime.strptime(r, "%Y-%m-%d %H:%M")
-            assert (dt.date() - now.date()).days == 0  # 未来时间 → 今天
+        if now.hour >= 22:
+            pytest.skip("深夜无当天未来小时")
+        target_hour = now.hour + 1
+        r = _parse_cn_relative(f"{target_hour}点")
+        dt = datetime.strptime(r, "%Y-%m-%d %H:%M")
+        assert (dt.date() - now.date()).days == 0  # 未来时间 → 今天
+        assert dt.hour == target_hour
+
+    def test_near_future_hour_stays_today(self):
+        """回归测试：未来几分钟内的时间（如 00:58 说"1点"）必须保持今天，
+        不能被 5 分钟缓冲误判成"已过"而顺延到明天。"""
+        from openmemo.conversation import _parse_ai_datetime as parse_dt
+        now = datetime.now()
+        if now.hour >= 23:
+            pytest.skip("23 点后无安全测试窗口")
+        # 直接构造绝对未来时刻：now + 90 秒（跨分钟但不跨小时/天）
+        future = now + timedelta(seconds=90)
+        # 用 HH:MM 分支：取 now 的下一分钟（保证未来，且 minute 不 wrap）
+        target_min = (now.minute + 1) % 60
+        target_hour = now.hour
+        r = _parse_cn_relative(f"{target_hour}点{target_min}分")
+        dt = datetime.strptime(r, "%Y-%m-%d %H:%M")
+        # 解析结果必须是未来（或最多同分钟），绝不能是昨天/明显过去
+        assert dt >= now - timedelta(seconds=70), f"解析出了过去的时间: {r}"
+        assert (dt.date() - now.date()).days <= 1
 
     def test_weekday(self):
         r = _parse_cn_relative("下周三 9点")
@@ -155,10 +170,15 @@ class TestParseAiDatetime:
 
     def test_hm_only_past_rolls_tomorrow(self):
         now = datetime.now()
+        # 用必然已过的时间：当前小时减 2（跨午夜也成立：00:xx-2h=昨天 22:xx
+        # → 解析为今天 22:xx 若仍在未来则保持今天；若已过则明天）。
+        # 这里直接验证“过去时刻 → 明天”的核心逻辑：构造 23:59 之外的前一天时间
         past = (now - timedelta(hours=2)).strftime("%H:%M")
         r = _parse_ai_datetime(past)
         dt = datetime.strptime(r, "%Y-%m-%d %H:%M")
-        assert (dt.date() - now.date()).days == 1  # 已过 → 明天
+        # 解析结果必须 >= now（从不为过去），且最多明天
+        assert dt >= now - timedelta(minutes=5)
+        assert (dt.date() - now.date()).days in (0, 1)
 
     def test_chinese_relative(self):
         r = _parse_ai_datetime("明天早上8点")

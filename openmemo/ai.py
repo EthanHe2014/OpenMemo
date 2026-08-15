@@ -3,7 +3,7 @@ import asyncio
 import json
 import re
 import httpx
-from .config import AI_BASE_URL, AI_API_KEY, AI_MODEL
+from .config import ai_base_url, ai_api_key, ai_model
 
 from .prompts import SYSTEM_PROMPT
 
@@ -28,15 +28,23 @@ async def call_ai(messages: list, system_prompt: str = None, retries: int = 1,
            对话/任务解析用 True；纯文本生成（提醒文案/新闻等）用 False。
            若接口不支持该参数（返回 400），会自动去掉重试，不影响其它提供商。
     """
-    if not AI_API_KEY:
+    # 运行时配置（settings.json 覆盖 .env，改模型/地址/密钥即时生效，无需重启）
+    key = ai_api_key()
+    base_url = ai_base_url()
+    model = ai_model()
+    if not key:
         return {"content": None, "error": "AI API key not configured"}
-    
+    if not base_url:
+        return {"content": None, "error": "AI base URL not configured"}
+    if not model:
+        return {"content": None, "error": "AI model not configured"}
+
     if system_prompt is None:
         system_prompt = SYSTEM_PROMPT
     
     full_messages = [{"role": "system", "content": system_prompt}] + messages
     
-    url = f"{AI_BASE_URL.rstrip('/')}/chat/completions"
+    url = f"{base_url.rstrip('/')}/chat/completions"
     
     use_json_mode = json_mode
     # json 模式走非流式：部分接口（如 DeepSeek）stream + json_object 会返回空流；
@@ -47,7 +55,7 @@ async def call_ai(messages: list, system_prompt: str = None, retries: int = 1,
     max_attempts = retries + 4
     for attempt in range(max_attempts):
         payload = {
-            "model": AI_MODEL,
+            "model": model,
             "messages": full_messages,
             "temperature": temperature if temperature is not None else 0.3,
             "max_tokens": max_tokens or 1500,  # 足够大，避免 JSON 被截断导致任务/提醒丢失
@@ -58,7 +66,7 @@ async def call_ai(messages: list, system_prompt: str = None, retries: int = 1,
         
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {AI_API_KEY}"
+            "Authorization": f"Bearer {key}"
         }
         
         try:

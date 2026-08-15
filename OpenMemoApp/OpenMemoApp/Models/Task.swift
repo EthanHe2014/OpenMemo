@@ -279,3 +279,18 @@ struct HealthResponse: Codable {
     let status: String
     let model: String?
 }
+
+// MARK: - 服务端设置
+
+struct SettingsResponse: Codable {
+    let settings: [String: SettingEntry]
+    let updated: [String]?
+}
+
+struct SettingEntry: Codable {
+    let value: String?
+    let description: String?
+    let sensitive: Bool?
+    let env: String?
+    let readonly: Bool?
+}

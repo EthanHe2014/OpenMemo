@@ -71,12 +71,33 @@ async def root():
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint"""
+    from .config import ai_model
     return {
         "name": "OpenMemo",
         "version": "1.0.0",
         "status": "running",
-        "model": AI_MODEL or ""
+        "model": ai_model() or ""
     }
+
+
+@app.get("/api/settings")
+async def get_settings():
+    """获取全部运行时配置（App 设置页用）。敏感字段已脱敏。"""
+    from .config import get_all_settings
+    return {"settings": get_all_settings()}
+
+
+@app.patch("/api/settings")
+async def patch_settings(request: Request):
+    """更新运行时配置（可改模型/地址/密钥/语音/搜索）。空值 = 回退 .env。"""
+    from .config import CONFIG_KEYS, set_setting, get_all_settings
+    body = await request.json()
+    updated = []
+    for key, value in body.items():
+        if key in CONFIG_KEYS:
+            if set_setting(key, value):
+                updated.append(key)
+    return {"success": True, "updated": updated, "settings": get_all_settings()}
 
 
 @app.get("/api/tasks")

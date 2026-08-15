@@ -111,7 +111,7 @@ def _parse_cn_relative(s: str):
     if hm:
         if offset is None:
             base = now.replace(hour=hm[0], minute=hm[1], second=0, microsecond=0)
-            if base <= now + timedelta(minutes=5):
+            if base < now:   # 只有已过才顺延到明天；未来时间（哪怕几分钟后）保持今天
                 base += timedelta(days=1)
             return base.strftime("%Y-%m-%d %H:%M")
         base = (now + timedelta(days=offset)).replace(hour=hm[0], minute=hm[1], second=0, microsecond=0)
@@ -121,7 +121,7 @@ def _parse_cn_relative(s: str):
     # 纯"下午3点"（无日期词）
     if hm:
         base = now.replace(hour=hm[0], minute=hm[1], second=0, microsecond=0)
-        if base <= now + timedelta(minutes=5):
+        if base < now:   # 同上：已过才明天
             base += timedelta(days=1)
         return base.strftime("%Y-%m-%d %H:%M")
     return None
@@ -163,10 +163,10 @@ def _parse_ai_datetime(value) -> str | None:
             return dt.strftime("%Y-%m-%d %H:%M")
         except ValueError:
             continue
-    # 只有 HH:MM：今天，若已过则明天
+    # 只有 HH:MM：今天，若已过则明天（未来时间保持今天，哪怕几分钟后）
     try:
         dt = datetime.strptime(s, "%H:%M").replace(year=now.year, month=now.month, day=now.day)
-        if dt <= now + timedelta(minutes=5):
+        if dt < now:
             dt += timedelta(days=1)
         return dt.strftime("%Y-%m-%d %H:%M")
     except ValueError:
