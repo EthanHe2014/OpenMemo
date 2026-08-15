@@ -80,3 +80,47 @@ class TestWatchdogAutoFix:
         problems = wd_env["run"](hours=24)
         assert not any("过期" in p and "老任务" in p for p in problems), \
             f"24h 前创建的任务不应被本轮检查: {problems}"
+
+    def test_deleted_task_not_flagged_as_broken_promise(self, wd_env):
+        """回归：AI 承诺建任务 → 用户删掉 → 看护不应报"承诺未落地"。
+        因为任务确实建过（删除留痕可证），只是后来被删。"""
+        mgr = wd_env["mgr"]
+        conn = wd_env["conn"]
+
+        # 用户说"提醒我明天去超市"，AI 承诺，任务建了
+        conn.execute(
+            "INSERT INTO conversations (session_id, role, content, created_at) VALUES (?,?,?,datetime('now','localtime'))",
+            ("s_del", "user", "提醒我明天去超市买东西"),
+        )
+        conn.execute(
+            "INSERT INTO conversations (session_id, role, content, created_at) VALUES (?,?,?,datetime('now','localtime'))",
+            ("s_del", "assistant", "好的，已帮你记下明天去超市的任务。"),
+        )
+        conn.commit()   # 先提交，避免事务锁住后续 add_task 的写入
+        t = mgr.add_task("去超市买东西", trigger_time="2026-09-01 08:00")
+        # 用户随后把任务删了（留痕）
+        mgr.delete_task(t["task_id"])
+        conn.commit()
+
+        problems = wd_env["run"](hours=24)
+        assert not any("承诺未落地" in p for p in problems), \
+            f"删除过的任务不应报承诺未落地: {problems}"
+
+    def test_never_created_task_still_flagged(self, wd_env):
+        """对照：AI 承诺但任务从未建过（也没删过）→ 仍然报承诺未落地。"""
+        mgr = wd_env["mgr"]
+        conn = wd_env["conn"]
+
+        conn.execute(
+            "INSERT INTO conversations (session_id, role, content, created_at) VALUES (?,?,?,datetime('now','localtime'))",
+            ("s_never", "user", "提醒我明天交作业"),
+        )
+        conn.execute(
+            "INSERT INTO conversations (session_id, role, content, created_at) VALUES (?,?,?,datetime('now','localtime'))",
+            ("s_never", "assistant", "好的，已帮你记下交作业的提醒。"),
+        )
+        conn.commit()
+
+        problems = wd_env["run"](hours=24)
+        assert any("承诺未落地" in p and "交作业" in p for p in problems), \
+            f"从未建过任务应报承诺未落地: {problems}"

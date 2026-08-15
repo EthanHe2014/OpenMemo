@@ -131,6 +131,38 @@ class TestTaskManagerDeep:
         assert n == 1
         assert mgr.get_task(pending["task_id"]) is not None
 
+    def test_delete_logs_for_watchdog(self, mgr):
+        """删除任务必须留痕（看护区分 已删 vs 从未建）。"""
+        import openmemo.tasks as tm
+        t = mgr.add_task("买牛奶")
+        mgr.delete_task(t["task_id"])
+        conn = sqlite3.connect(str(tm.DB_PATH))
+        row = conn.execute("SELECT content, deleted_by FROM task_deletions").fetchone()
+        conn.close()
+        assert row is not None
+        assert row[0] == "买牛奶"
+        assert row[1] == "user"
+
+    def test_delete_log_cleanup_tag(self, mgr):
+        """自动清理删除也要留痕，标记 deleted_by='cleanup'。"""
+        import openmemo.tasks as tm
+        t = mgr.add_task("旧完成")
+        mgr.complete_task(t["task_id"])
+        conn = sqlite3.connect(str(tm.DB_PATH))
+        conn.execute(
+            "UPDATE tasks SET updated_at = datetime('now','localtime','-25 hours') WHERE task_id=?",
+            (t["task_id"],),
+        )
+        conn.commit()
+        conn.close()
+        mgr.delete_finished_old(older_than_hours=24)
+        conn = sqlite3.connect(str(tm.DB_PATH))
+        row = conn.execute(
+            "SELECT deleted_by FROM task_deletions WHERE task_id=?", (t["task_id"],)
+        ).fetchone()
+        conn.close()
+        assert row is not None and row[0] == "cleanup"
+
     def test_reminders_crud(self, mgr):
         mgr.add_reminder(1, "内容", "消息")
         mgr.add_reminder(1, "内容", "消息2")

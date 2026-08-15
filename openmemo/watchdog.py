@@ -130,6 +130,10 @@ def run_watchdog(hours: int = 24, auto_fix: bool = True) -> list:
             window_start = user_dt - timedelta(minutes=1)
             window_end = reply_dt + timedelta(minutes=1)
             landed = _tasks_created_in_window(window_start, window_end)
+            # 任务可能已落地但随后被用户删除/自动清理：删除留痕里能匹配到
+            # 用户原话 → 承诺兑现过，不算"承诺未落地"。
+            if not landed and tm.task_deleted_in_window(user_text, window_start, window_end):
+                continue
             if not landed:
                 msg = (
                     f"[承诺未落地] 会话 {sid[:12]}… {user_dt.strftime('%H:%M')} "

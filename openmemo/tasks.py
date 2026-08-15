@@ -115,6 +115,17 @@ def init_db():
         created_at TEXT DEFAULT (datetime('now', 'localtime'))
     )
     """)
+
+    # 任务删除留痕：看护判断“承诺是否落地”时，任务被删 ≠ 承诺未兑现
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS task_deletions (
+        deletion_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id INTEGER,
+        content TEXT,
+        deleted_by TEXT DEFAULT 'user',
+        created_at TEXT DEFAULT (datetime('now', 'localtime'))
+    )
+    """)
     conn.commit()
 
     conn.commit()
@@ -238,20 +249,68 @@ class TaskManager:
         return self.update_task(task_id, status="cancelled")
     
     def delete_task(self, task_id: int) -> bool:
-        """Delete a task"""
+        """Delete a task（删除留痕，供看护判断承诺落地）"""
         conn = get_db()
         cursor = conn.cursor()
+        # 先留痕：记录被删任务的内容，供 watchdog 区分"已落地后被删"与"从未落地"
+        row = cursor.execute(
+            "SELECT content FROM tasks WHERE task_id = ?", (task_id,)
+        ).fetchone()
+        if row:
+            cursor.execute(
+                "INSERT INTO task_deletions (task_id, content, deleted_by) VALUES (?, ?, 'user')",
+                (task_id, row["content"]),
+            )
         cursor.execute("DELETE FROM tasks WHERE task_id = ?", (task_id,))
         affected = cursor.rowcount
         conn.commit()
         conn.close()
         return affected > 0
 
+    def task_deleted_in_window(self, content_fragment: str, start, end) -> bool:
+        """指定时间窗口内，是否删除过与 content_fragment 相关的任务。
+        双向匹配：删除的任务内容包含用户原话片段，或用户原话包含任务内容。
+        用于看护：AI 承诺过且任务确实建过，但后来被用户删了 → 不算承诺未落地。"""
+        conn = get_db()
+        cursor = conn.cursor()
+        rows = cursor.execute(
+            """SELECT content FROM task_deletions
+               WHERE created_at >= ? AND created_at <= ?""",
+            (start.strftime("%Y-%m-%d %H:%M:%S"), end.strftime("%Y-%m-%d %H:%M:%S")),
+        ).fetchall()
+        conn.close()
+        fragment = (content_fragment or "").strip()
+        if not fragment:
+            return False
+        for r in rows:
+            deleted_content = (r["content"] or "").strip()
+            if not deleted_content:
+                continue
+            # 任务内容包含原话（去超市买东西 ⊂ 提醒我明天去超市买东西）
+            if deleted_content in fragment:
+                return True
+            # 原话包含任务内容（提醒我买牛奶 ⊃ 买牛奶）
+            if fragment in deleted_content:
+                return True
+        return False
+
     def delete_finished_old(self, older_than_hours: int = 24) -> int:
         """清理已完结（completed/cancelled）且超过 N 小时的任务。
         返回删除条数。待办（pending）任务绝不动。"""
         conn = get_db()
         cursor = conn.cursor()
+        # 先留痕（自动清理删除，供看护判断）
+        rows = cursor.execute(
+            """SELECT task_id, content FROM tasks
+               WHERE status IN ('completed', 'cancelled')
+                 AND updated_at < datetime('now', 'localtime', ?)""",
+            (f"-{int(older_than_hours)} hours",),
+        ).fetchall()
+        for r in rows:
+            cursor.execute(
+                "INSERT INTO task_deletions (task_id, content, deleted_by) VALUES (?, ?, 'cleanup')",
+                (r["task_id"], r["content"]),
+            )
         cursor.execute(
             """DELETE FROM tasks
                WHERE status IN ('completed', 'cancelled')
