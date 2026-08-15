@@ -226,7 +226,9 @@ struct TaskListViewNew: View {
     private var taskScrollView: some View {
         ScrollView {
             LazyVStack(spacing: 12) {
-                ForEach(groupedTasks.keys.sorted(), id: \.self) { section in
+                // 固定分组顺序：今天 → 明天 → 未来 → 待安排 → 已完成 → 已取消
+                let orderedKeys = ["今天", "明天", "未来", "待安排", "已完成", "已取消"]
+                ForEach(orderedKeys, id: \.self) { section in
                     if let tasks = groupedTasks[section], !tasks.isEmpty {
                         TaskSection(
                             title: section,
@@ -257,9 +259,11 @@ struct TaskListViewNew: View {
             return taskVM.tasks.filter { $0.isPending }
         case .today:
             return taskVM.tasks.filter { task in
-                guard let t = task.triggerTime,
+                guard task.isPending, let t = task.triggerTime,
                       let d = TaskListHelpers.parseTime(t) else { return false }
-                return Calendar.current.isDateInToday(d) && task.isPending
+                // 今天到期 + 已过期未完成都算"今日"
+                return Calendar.current.isDateInToday(d)
+                    || d < Calendar.current.startOfDay(for: Date())
             }
         case .completed:
             return taskVM.tasks.filter { $0.isCompleted }
@@ -272,6 +276,9 @@ struct TaskListViewNew: View {
             if task.isCancelled { return "已取消" }
             if let time = task.triggerTime,
                let date = TaskListHelpers.parseTime(time) {
+                // 过期未完成的任务（时间已过）也归入"今天"，不能漏到"未来"
+                let startOfToday = Calendar.current.startOfDay(for: Date())
+                if date < startOfToday { return "今天" }
                 if Calendar.current.isDateInToday(date) { return "今天" }
                 if Calendar.current.isDateInTomorrow(date) { return "明天" }
                 return "未来"
@@ -286,9 +293,10 @@ struct TaskListViewNew: View {
         case .pending: return taskVM.tasks.filter { $0.isPending }.count
         case .today:
             return taskVM.tasks.filter { task in
-                guard let t = task.triggerTime,
+                guard task.isPending, let t = task.triggerTime,
                       let d = TaskListHelpers.parseTime(t) else { return false }
-                return Calendar.current.isDateInToday(d) && task.isPending
+                return Calendar.current.isDateInToday(d)
+                    || d < Calendar.current.startOfDay(for: Date())
             }.count
         case .completed: return taskVM.tasks.filter { $0.isCompleted }.count
         }
@@ -297,9 +305,10 @@ struct TaskListViewNew: View {
     private func calculateStats() -> (pending: Int, today: Int, completed: Int, total: Int) {
         let pending = taskVM.tasks.filter { $0.isPending }.count
         let today = taskVM.tasks.filter { task in
-            guard let t = task.triggerTime,
+            guard task.isPending, let t = task.triggerTime,
                   let d = TaskListHelpers.parseTime(t) else { return false }
-            return Calendar.current.isDateInToday(d) && task.isPending
+            return Calendar.current.isDateInToday(d)
+                || d < Calendar.current.startOfDay(for: Date())
         }.count
         let completed = taskVM.tasks.filter { $0.isCompleted }.count
         return (pending, today, completed, taskVM.tasks.count)

@@ -2,6 +2,7 @@ import SwiftUI
 
 // MARK: - Settings View New
 struct SettingsViewNew: View {
+    @AppStorage("serverURL") private var storedServerURL = "http://127.0.0.1:18890"
     @State private var serverURL: String
     @State private var saved = false
     @State private var isConnected: Bool? = nil
@@ -12,7 +13,10 @@ struct SettingsViewNew: View {
     @State private var showingClearConfirmation = false
 
     init() {
-        _serverURL = State(initialValue: OpenMemoAPI.shared.baseURL)
+        // 启动时把持久化的地址应用到 API 客户端
+        let stored = UserDefaults.standard.string(forKey: "serverURL") ?? "http://127.0.0.1:18890"
+        OpenMemoAPI.shared.baseURL = stored
+        _serverURL = State(initialValue: stored)
     }
 
     var body: some View {
@@ -189,13 +193,29 @@ struct SettingsViewNew: View {
         .alert("确认清除", isPresented: $showingClearConfirmation) {
             Button("取消", role: .cancel) {}
             Button("清除", role: .destructive) {
-                // Clear data logic
+                clearAllData()
             }
         } message: {
-            Text("这将删除所有本地数据，此操作不可撤销。")
+            Text("这将删除所有任务，此操作不可撤销。")
         }
         .task {
             check()
+        }
+    }
+
+    /// 清除所有数据：遍历删除服务端全部任务。
+    private func clearAllData() {
+        let api = OpenMemoAPI.shared
+        Task {
+            do {
+                let resp = try await api.listTasks()
+                for task in resp.tasks {
+                    _ = try? await api.deleteTask(task.taskId)
+                }
+                healthStatus = "已清除 \(resp.tasks.count) 个任务"
+            } catch {
+                healthStatus = "清除失败：\(error.localizedDescription)"
+            }
         }
     }
 
@@ -206,6 +226,7 @@ struct SettingsViewNew: View {
         let trimmed = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         OpenMemoAPI.shared.baseURL = trimmed
+        storedServerURL = trimmed          // 持久化，下次启动自动应用
         saved = true
         check()
     }

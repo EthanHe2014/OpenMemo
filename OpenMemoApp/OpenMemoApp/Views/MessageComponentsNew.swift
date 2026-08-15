@@ -181,10 +181,8 @@ struct SidebarViewNew: View {
                     Spacer()
                     
                     Button {
-                        Task {
-                            await chatVM.startFresh()
-                            close()
-                        }
+                        chatVM.newSession()
+                        close()
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "plus")

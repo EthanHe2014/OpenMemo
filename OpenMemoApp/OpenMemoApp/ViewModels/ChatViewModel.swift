@@ -120,10 +120,13 @@ final class ChatViewModel {
             defer { isSending = false }
             do {
                 let reply = try await api.chat(message: text, sessionId: sessionId)
+                // 只把回复追加到发送时所在的会话；若用户已切走则丢弃，避免串会话
+                guard self.currentSessionId == sessionId else { return }
                 self.messages.append(ChatMessage(role: .assistant, text: reply))
                 // 保持侧边栏最新，让新建/更新的会话出现在顶部。
                 await self.refreshSessions()
             } catch {
+                guard self.currentSessionId == sessionId else { return }
                 self.messages.append(ChatMessage(role: .assistant, text: "连接失败：\(error.localizedDescription)"))
             }
         }

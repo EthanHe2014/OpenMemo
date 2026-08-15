@@ -45,11 +45,17 @@ struct ChatViewNew: View {
                 chatVM.inputText = text
                 chatVM.send()
             }
-            if !speechAuthGranted {
-                speechAuthGranted = await VoiceInputManager.requestAuthorization()
-            }
-            if speechAuthGranted {
-                voice.setWakeMode(true)
+            // 唤醒词开关（设置页持久化）：默认开，关了就不监听
+            let wakeEnabled = UserDefaults.standard.object(forKey: "wakeWordEnabled") as? Bool ?? true
+            if wakeEnabled {
+                if !speechAuthGranted {
+                    speechAuthGranted = await VoiceInputManager.requestAuthorization()
+                }
+                if speechAuthGranted {
+                    voice.setWakeMode(true)
+                }
+            } else {
+                voice.setWakeMode(false)
             }
         }
     }
@@ -77,21 +83,24 @@ struct ChatViewNew: View {
                     .font(OMFonts.title3)
                     .foregroundStyle(.white)
                 
-                // 唤醒词常开 → 状态常驻，不随 re-arm 闪烁
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(OMColors.success)
-                        .frame(width: 6, height: 6)
-                    Text("小麦小麦 待命")
-                        .font(OMFonts.caption2)
-                        .foregroundStyle(OMColors.success)
+                // 唤醒词开关（设置页可关）→ 状态随开关变化
+                let wakeEnabled = UserDefaults.standard.object(forKey: "wakeWordEnabled") as? Bool ?? true
+                if wakeEnabled {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(OMColors.success)
+                            .frame(width: 6, height: 6)
+                        Text("小麦小麦 待命")
+                            .font(OMFonts.caption2)
+                            .foregroundStyle(OMColors.success)
+                    }
                 }
             }
             
             Spacer()
             
             Button {
-                Task { await chatVM.startFresh() }
+                chatVM.newSession()
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 20, weight: .semibold))
