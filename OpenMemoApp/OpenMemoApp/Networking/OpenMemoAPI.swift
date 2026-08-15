@@ -149,22 +149,6 @@ final class OpenMemoAPI: @unchecked Sendable {
         _ = try? await URLSession.shared.data(for: req)
     }
 
-    // MARK: - 服务端设置（settings.json，热生效）
-
-    func getSettings() async throws -> SettingsResponse {
-        let (data, _) = try await URLSession.shared.data(from: URL(string: "\(baseURL)/api/settings")!)
-        return try decoder.decode(SettingsResponse.self, from: data)
-    }
-
-    func updateSettings(_ changes: [String: String]) async throws -> SettingsResponse {
-        var req = URLRequest(url: URL(string: "\(baseURL)/api/settings")!)
-        req.httpMethod = "PATCH"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: changes)
-        let (data, _) = try await URLSession.shared.data(for: req)
-        return try decoder.decode(SettingsResponse.self, from: data)
-    }
-
     /// 服务端 Edge TTS 朗读一段文字（等播放完成才返回，用于唤醒应答"我在！"）
     func speak(_ text: String) async {
         var req = URLRequest(url: URL(string: "\(baseURL)/api/speak")!)
