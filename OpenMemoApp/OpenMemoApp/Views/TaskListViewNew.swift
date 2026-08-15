@@ -471,7 +471,7 @@ struct TaskCard: View {
                 checkButton
             }
             .contentShape(Rectangle())
-            .onTapGesture { onToggle() }
+            .onTapGesture { toggleOnce() }
             
             // ── 独立删除按钮：点击只删除，绝不触发切换 ──
             deleteButton
@@ -483,6 +483,17 @@ struct TaskCard: View {
                 .stroke(borderColor, lineWidth: 1)
         )
         .hoverGlow()
+    }
+    
+    /// Catalyst 上 .onTapGesture 在含 Button 的层级里会偶发双触发，
+    /// 导致任务“完成→飞到底部→又切回来”。用时间窗口去抖，只认第一次。
+    @State private var lastToggleAt = Date.distantPast
+    
+    private func toggleOnce() {
+        let now = Date()
+        guard now.timeIntervalSince(lastToggleAt) > 0.35 else { return }
+        lastToggleAt = now
+        onToggle()
     }
     
     private var statusIndicator: some View {
