@@ -136,6 +136,13 @@ def _parse_ai_datetime(value) -> str | None:
     if not value:
         return None
     s = str(value).strip()
+    # 重复规则（每X小时/分钟/天/周/月 + 每天/每周X/工作日/周末/每天多时间点）不是时间！
+    # AI 若误把 recurring 写进 time 字段，这里必须拒绝，避免建成一次性任务。
+    if (re.search(r"每\s*[\d一二两三四五六七八九十]+\s*(小时|分钟|天|周|月)", s)
+            or s in ("每天", "工作日", "周末")
+            or re.search(r"^每(周|天)", s)
+            or "和" in s and "点" in s and "每" in s):
+        return None
     now = datetime.now()
     # 绝对格式
     for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M"):

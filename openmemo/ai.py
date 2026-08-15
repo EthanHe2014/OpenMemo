@@ -219,6 +219,10 @@ def _repair_candidates(text: str) -> list:
     if stripped.endswith(','):
         for candidate in _repair_candidates(stripped[:-1]):
             yield candidate
+    # 4) 任意位置的多余尾逗号：把 ",}" 修成 "}"（含嵌套，如 {"a":{"b":1,},}）
+    fixed = re.sub(r",\s*(?=[}\]])", "", text)
+    if fixed != text:
+        yield fixed
     return
 
 
