@@ -441,35 +441,40 @@ struct TaskCard: View {
     
     var body: some View {
         HStack(spacing: 14) {
-            // Status indicator
-            statusIndicator
-            
-            // Content
-            VStack(alignment: .leading, spacing: 6) {
-                Text(task.content)
-                    .font(OMFonts.body.weight(task.isPending ? .medium : .regular))
-                    .foregroundStyle(task.isCompleted ? .white.opacity(0.5) : .white)
-                    .strikethrough(task.isCompleted)
-                    .lineLimit(2)
+            // ── 可点击切换区：状态 + 内容 + 勾选（点这里 = 完成/未完成）──
+            HStack(spacing: 14) {
+                // Status indicator
+                statusIndicator
                 
-                HStack(spacing: 10) {
-                    if let time = task.triggerTime {
-                        timeLabel(time)
-                    }
+                // Content
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(task.content)
+                        .font(OMFonts.body.weight(task.isPending ? .medium : .regular))
+                        .foregroundStyle(task.isCompleted ? .white.opacity(0.5) : .white)
+                        .strikethrough(task.isCompleted)
+                        .lineLimit(2)
                     
-                    if let rec = task.isRecurring, !rec.isEmpty {
-                        recurringLabel(rec)
+                    HStack(spacing: 10) {
+                        if let time = task.triggerTime {
+                            timeLabel(time)
+                        }
+                        
+                        if let rec = task.isRecurring, !rec.isEmpty {
+                            recurringLabel(rec)
+                        }
                     }
                 }
+                
+                Spacer(minLength: 8)
+                
+                // Check button
+                checkButton
             }
+            .contentShape(Rectangle())
+            .onTapGesture { onToggle() }
             
-            Spacer(minLength: 8)
-            
-            // Delete button
+            // ── 独立删除按钮：点击只删除，绝不触发切换 ──
             deleteButton
-            
-            // Check button
-            checkButton
         }
         .padding()
         .glass(cornerRadius: 18)
@@ -478,8 +483,6 @@ struct TaskCard: View {
                 .stroke(borderColor, lineWidth: 1)
         )
         .hoverGlow()
-        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .onTapGesture { onToggle() }
     }
     
     private var statusIndicator: some View {
