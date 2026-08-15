@@ -597,6 +597,7 @@ struct TaskCard: View {
 /// 垃圾桶按钮：悬停时图标变红 + 红色辉光 + 微放大
 struct HoverableDeleteButton: View {
     let onDelete: () -> Void
+    var help: String = "删除任务"
     @State private var isHovered = false
     
     var body: some View {
@@ -618,6 +619,6 @@ struct HoverableDeleteButton: View {
         .onHover { hovering in
             isHovered = hovering
         }
-        .help("删除任务")
+        .help(help)
     }
 }

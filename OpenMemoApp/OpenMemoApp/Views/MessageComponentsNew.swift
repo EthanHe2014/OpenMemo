@@ -290,10 +290,9 @@ struct SessionRow: View {
     let onSelect: () -> Void
     let onDelete: () -> Void
     
-    @State private var showingDelete = false
-    
     var body: some View {
-        Button(action: onSelect) {
+        HStack(spacing: 8) {
+            // ── 可点击选中区 ──
             HStack(spacing: 12) {
                 // Icon
                 ZStack {
@@ -328,19 +327,23 @@ struct SessionRow: View {
                         .foregroundStyle(OMColors.success)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(isSelected ? Color.white.opacity(0.1) : Color.clear)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(isSelected ? Color.white.opacity(0.2) : Color.clear, lineWidth: 1)
-            )
-            .hoverGlow()
+            .contentShape(Rectangle())
+            .onTapGesture { onSelect() }
+            
+            // ── 独立删除按钮：点击只删除会话 ──
+            HoverableDeleteButton(onDelete: onDelete, help: "删除对话")
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(isSelected ? Color.white.opacity(0.1) : Color.clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(isSelected ? Color.white.opacity(0.2) : Color.clear, lineWidth: 1)
+        )
+        .hoverGlow()
         .contextMenu {
             Button(role: .destructive, action: onDelete) {
                 Label("删除", systemImage: "trash")
