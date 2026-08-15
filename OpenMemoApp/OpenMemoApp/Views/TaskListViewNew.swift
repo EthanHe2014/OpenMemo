@@ -36,13 +36,15 @@ struct TaskListViewNew: View {
                 // Task list
                 taskList
             }
-            
-            // 左侧删除区：平时半透明，拖任务悬停时亮红
+        }
+        .overlay(alignment: .leading) {
+            // 左侧删除区：贴住窗口左缘，平时半透明，拖任务悬停时亮红
             DeleteDropZone(isTargeted: $isDeleteZoneTargeted) { taskId in
                 if let task = taskVM.tasks.first(where: { $0.taskId == taskId }) {
                     Task { await taskVM.delete(task) }
                 }
             }
+            .padding(.leading, 10)
             .opacity(deleteZoneVisible ? 1 : 0.55)
         }
         .sheet(isPresented: $showingAddTask) {
@@ -703,7 +705,6 @@ struct DeleteDropZone: View {
         }
         .frame(width: 88)
         .frame(maxHeight: .infinity)
-        .padding(.leading, 12)
         .contentShape(Rectangle())
         .dropDestination(for: TaskDragPayload.self) { payloads, _ in
             guard let first = payloads.first else { return false }
