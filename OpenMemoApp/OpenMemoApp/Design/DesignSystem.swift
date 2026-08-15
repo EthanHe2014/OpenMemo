@@ -213,7 +213,7 @@ struct HoverGlow: ViewModifier {
             )
             .shadow(color: isHovered ? glowColor.opacity(0.5) : .clear, radius: isHovered ? 12 : 0)
             .brightness(isHovered ? 0.08 : 0)
-            .scaleEffect(isHovered ? 1.06 : 1)
+            .scaleEffect(isHovered ? 1.01 : 1)
             .animation(.easeInOut(duration: 0.15), value: isHovered)
             .onHover { hovering in
                 isHovered = hovering
