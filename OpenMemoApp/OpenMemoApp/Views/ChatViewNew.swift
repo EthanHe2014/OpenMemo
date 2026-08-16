@@ -175,10 +175,10 @@ struct ChatViewNew: View {
                 let ringStep: CGFloat = 30
                 let sparkleSize: CGFloat = 40
                 #else
-                let logoSize: CGFloat = 70
-                let ringBase: CGFloat = 80
-                let ringStep: CGFloat = 24
-                let sparkleSize: CGFloat = 32
+                let logoSize: CGFloat = 80
+                let ringBase: CGFloat = 88
+                let ringStep: CGFloat = 26
+                let sparkleSize: CGFloat = 36
                 #endif
                 
                 // Outer glow rings
