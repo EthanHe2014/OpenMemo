@@ -272,7 +272,14 @@ def _create_task_from_ai_task(task: dict, session_id: str) -> dict | None:
         # One-shot DateTrigger (for both one-shot and recurring first fire).
         # Recurring re-arms each day by keeping the SAME task_id via
         # _schedule_next_daily_task inside the executor — no duplicate rows.
-        scheduler_mod.schedule_task(db_task["task_id"], time_str)
+        from .scheduler import schedule_task
+        scheduled = schedule_task(db_task["task_id"], time_str)
+        # 循环任务的首个触发时间已过（如 8 点后说"每天早上8点"）：
+        # schedule_task 会跳过过去时间 → 立即补触发一次，触发后自动重排明天。
+        if scheduled is False and recurring:
+            from .scheduler import scheduler as sched, reminder_callback as cb
+            sched.add_job(cb, args=[db_task["task_id"]], id=f"task_{db_task['task_id']}_overdue", replace_existing=True)
+            print(f"[conversation] 循环任务 {db_task['task_id']} 首触发已过，立即补触发")
 
     return db_task
 
@@ -297,6 +304,24 @@ async def _schedule_appointment(appointment: dict, session_id: str):
         meta_data={"reminder_text": read_aloud, "appointment": True},
     )
     scheduler_mod.schedule_task(db_task["task_id"], at)
+
+
+def _match_task_by_content(content: str, pending_first: bool = True) -> dict | None:
+    """按内容定位任务：先精确匹配，再模糊匹配（LIKE）。
+    避免 AI 说"删买牛奶"时误删"帮妈妈买牛奶"。
+    返回第一个命中的任务 dict，无则 None。"""
+    if not content or not str(content).strip():
+        return None
+    content = str(content).strip()
+    matches = task_manager.search_tasks(content)
+    if not matches:
+        return None
+    # 精确匹配优先（完整内容相等）
+    exact = [t for t in matches if t["content"].strip() == content]
+    pool = exact if exact else matches
+    if pending_first:
+        pool = sorted(pool, key=lambda t: 0 if t["status"] == "pending" else 1)
+    return pool[0]
 
 
 async def _apply_ai_action(result: dict, session_id: str):
@@ -356,21 +381,18 @@ async def _apply_ai_action(result: dict, session_id: str):
         task = result.get("task")
         content = (task or {}).get("content")
         if content:
-            matches = task_manager.search_tasks(content)
-            pending = [t for t in matches if t["status"] == "pending"]
-            if pending:
-                task_manager.complete_task(pending[0]["task_id"])
+            target = _match_task_by_content(content, pending_first=True)
+            if target:
+                task_manager.complete_task(target["task_id"])
         return
 
     if action == "task_deleted":
-        # AI 指名删除任务：按 content 匹配第一个（优先待办）
+        # AI 指名删除任务：优先精确匹配内容，再模糊匹配（避免删错"帮妈妈买牛奶"）
         task = result.get("task") or {}
         content = task.get("content")
         if content:
-            matches = task_manager.search_tasks(content)
-            if matches:
-                ordered = sorted(matches, key=lambda t: 0 if t["status"] == "pending" else 1)
-                target = ordered[0]
+            target = _match_task_by_content(content, pending_first=True)
+            if target:
                 task_manager.delete_task(target["task_id"])
                 print(f"[conversation] task_deleted #{target['task_id']} {target['content']}")
         return
@@ -380,10 +402,8 @@ async def _apply_ai_action(result: dict, session_id: str):
         task = result.get("task") or {}
         content = task.get("content")
         if content:
-            matches = task_manager.search_tasks(content)
-            if matches:
-                ordered = sorted(matches, key=lambda t: 0 if t["status"] == "pending" else 1)
-                target = ordered[0]
+            target = _match_task_by_content(content, pending_first=True)
+            if target:
                 tid = target["task_id"]
                 updates = {}
                 if task.get("new_content"):

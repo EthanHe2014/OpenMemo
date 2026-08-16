@@ -73,7 +73,7 @@ def _all_tasks() -> list:
     conn = _db()
     cur = conn.cursor()
     rows = cur.execute(
-        "SELECT task_id, content, trigger_time, status, reminder_sent, created_at FROM tasks"
+        "SELECT task_id, content, trigger_time, status, reminder_sent, created_at, is_recurring FROM tasks"
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -153,13 +153,28 @@ def run_watchdog(hours: int = 24, auto_fix: bool = True) -> list:
         if created < since:
             continue
         if t["status"] == "pending" and trig < now and not t["reminder_sent"]:
+            # 循环任务：时间过了不该取消——立即补触发一次（触发后自动重排下一次）
+            if t.get("is_recurring"):
+                from .scheduler import scheduler as sched, reminder_callback as cb
+                try:
+                    sched.add_job(cb, args=[t["task_id"]], id=f"task_{t['task_id']}_overdue", replace_existing=True)
+                    fix_msg = (
+                        f"[自动处理] 循环任务 #{t['task_id']}『{t['content'][:20]}』"
+                        f"已过触发时间，立即补触发"
+                    )
+                except Exception as e:
+                    fix_msg = f"[自动处理] 循环任务 #{t['task_id']} 补触发失败：{e}"
+                print(f"[看护] {fix_msg}")
+                if auto_fix and not tm.alert_exists(fix_msg):
+                    tm.add_alert("autofix", fix_msg)
+                continue
             msg = (
                 f"[过期时间] 任务 #{t['task_id']}『{t['content'][:20]}』"
                 f"触发时间 {t['trigger_time']} 已过去，永远不会触发"
             )
             problems.append(msg)
             if auto_fix:
-                # 自动处理：取消这个永远触发不了的任务
+                # 自动处理：取消这个永远触发不了的一次性任务
                 tm.update_task(t["task_id"], status="cancelled")
                 fix_msg = f"[自动处理] 已取消过期任务 #{t['task_id']}『{t['content'][:20]}』（时间已过）"
                 print(f"[看护] {fix_msg}")

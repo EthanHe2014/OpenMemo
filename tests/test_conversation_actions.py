@@ -175,6 +175,34 @@ class TestApplyAiAction:
         from openmemo.conversation import _apply_ai_action
         asyncio.run(_apply_ai_action({"action": "chat", "reply": "你好"}, "s1"))  # 不崩
 
+    def test_task_deleted_prefers_exact_match(self, conv_env):
+        """回归：删"买牛奶"不得误删"帮妈妈买牛奶"（精确匹配优先）。"""
+        import asyncio
+        from openmemo.conversation import _apply_ai_action, _match_task_by_content
+        a = conv_env.add_task("买牛奶", trigger_time="2026-09-01 08:00")
+        b = conv_env.add_task("帮妈妈买牛奶", trigger_time="2026-09-01 09:00")
+
+        target = _match_task_by_content("买牛奶")
+        assert target["task_id"] == a["task_id"], f"应精确匹配买牛奶，却命中: {target['content']}"
+
+        asyncio.run(_apply_ai_action({"action": "task_deleted", "task": {"content": "买牛奶"}}, "s1"))
+        assert conv_env.get_task(a["task_id"]) is None
+        assert conv_env.get_task(b["task_id"]) is not None, "帮妈妈买牛奶 被误删！"
+
+    def test_match_prefers_pending(self, conv_env):
+        from openmemo.conversation import _match_task_by_content
+        done = conv_env.add_task("写作业", trigger_time="2026-09-01 08:00")
+        conv_env.complete_task(done["task_id"])
+        pending = conv_env.add_task("写作业", trigger_time="2026-09-02 08:00")
+        target = _match_task_by_content("写作业")
+        assert target["task_id"] == pending["task_id"]
+
+    def test_match_no_result(self, conv_env):
+        from openmemo.conversation import _match_task_by_content
+        assert _match_task_by_content("不存在的东西") is None
+        assert _match_task_by_content("") is None
+        assert _match_task_by_content(None) is None
+
     def test_collecting_noop(self, conv_env):
         import asyncio
         from openmemo.conversation import _apply_ai_action

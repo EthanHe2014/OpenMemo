@@ -305,14 +305,14 @@ def _next_occurrence(task: dict, recurring: str):
         return None
     return None
 
-def schedule_task(task_id: int, trigger_time: str):
-    """安排任务提醒"""
+def schedule_task(task_id: int, trigger_time: str) -> bool:
+    """安排任务提醒。返回 True=已调度，False=时间已过跳过（调用方可补触发）。"""
     try:
         dt = datetime.strptime(trigger_time, "%Y-%m-%d %H:%M")
         
         if dt <= datetime.now():
             print(f"[调度器] 任务 {task_id} 的时间已过，跳过")
-            return
+            return False
         
         scheduler.add_job(
             reminder_callback,
@@ -322,8 +322,10 @@ def schedule_task(task_id: int, trigger_time: str):
             replace_existing=True
         )
         print(f"[调度器] 已安排任务 {task_id}，提醒时间：{trigger_time}")
+        return True
     except ValueError as e:
         print(f"[调度器] 任务 {task_id} 时间格式无效：{e}")
+        return False
 
 
 def load_existing_tasks():

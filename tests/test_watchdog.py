@@ -124,3 +124,23 @@ class TestWatchdogAutoFix:
         problems = wd_env["run"](hours=24)
         assert any("承诺未落地" in p and "交作业" in p for p in problems), \
             f"从未建过任务应报承诺未落地: {problems}"
+
+    def test_recurring_overdue_not_cancelled(self, wd_env):
+        """回归：循环任务触发时间已过 → 不取消，立即补触发（保持 pending）。"""
+        mgr = wd_env["mgr"]
+        past = (datetime.now() - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M")
+        t = mgr.add_task("每天早上8点", trigger_time=past, is_recurring="每天")
+
+        problems = wd_env["run"](hours=24)
+        after = mgr.get_task(t["task_id"])
+        assert after["status"] == "pending", f"循环任务不应被取消: {after['status']}"
+        assert not any("过期" in p and "每天早上8点" in p for p in problems)
+
+    def test_oneshot_overdue_still_cancelled(self, wd_env):
+        """对照：一次性任务时间已过 → 仍然取消（无法触发）。"""
+        mgr = wd_env["mgr"]
+        past = (datetime.now() - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M")
+        t = mgr.add_task("一次性过期", trigger_time=past)
+
+        problems = wd_env["run"](hours=24)
+        assert mgr.get_task(t["task_id"])["status"] == "cancelled"
