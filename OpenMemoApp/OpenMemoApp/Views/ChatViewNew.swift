@@ -239,17 +239,12 @@ struct ChatViewNew: View {
             inputBar
         }
         .frame(maxWidth: .infinity)
-        .background(
-            VStack(spacing: 0) {
-                OMColors.surface
-                    .overlay(.ultraThinMaterial)
-                // iPhone：背景延伸进底部安全区（Home 条下不留缝隙）
-                #if !targetEnvironment(macCatalyst)
-                OMColors.surface
-                    .frame(height: 20)
-                #endif
-            }
-        )
+        .background {
+            // 同一块材质背景直接延伸进底部安全区（Home 条下无缝，无灰色残条）
+            OMColors.surface
+                .overlay(.ultraThinMaterial)
+                .ignoresSafeArea(edges: .bottom)
+        }
     }
     
     private var inputBar: some View {

@@ -10,6 +10,8 @@ struct OpenMemoApp: App {
             ContentView()
                 .environment(taskVM)
                 .environment(chatVM)
+                // 强制深色：UI 设计就是深色（与 Mac 版一致，避免 iPhone 浅色模式露馅）
+                .preferredColorScheme(.dark)
         }
     }
 }
