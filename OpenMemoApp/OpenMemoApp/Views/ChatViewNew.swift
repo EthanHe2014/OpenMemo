@@ -30,7 +30,7 @@ struct ChatViewNew: View {
                 inputSection
             }
             
-            // Sidebar overlay
+            // Sidebar overlay（与 Mac 一致：滑出侧栏）
             if showSidebar {
                 SidebarViewNew(onClose: {
                     withAnimation(OMAnimations.spring) {
@@ -46,7 +46,7 @@ struct ChatViewNew: View {
                 chatVM.inputText = text
                 chatVM.send()
             }
-            // 唤醒词开关（设置页持久化）：默认开，关了就不监听
+            // 唤醒词开关（设置页持久化）：默认开，关了就不监听（与 Mac 一致）
             let wakeEnabled = UserDefaults.standard.object(forKey: "wakeWordEnabled") as? Bool ?? true
             if wakeEnabled {
                 if !speechAuthGranted {

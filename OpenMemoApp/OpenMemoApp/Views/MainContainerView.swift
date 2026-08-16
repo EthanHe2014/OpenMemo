@@ -10,6 +10,7 @@ struct MainContainerView: View {
     }
     
     var body: some View {
+        // 与 Mac 完全一致：滑动切换页面（iPhone 同样支持左右滑）
         TabView(selection: $selectedTab) {
             ChatViewNew()
                 .tag(Tab.chat)

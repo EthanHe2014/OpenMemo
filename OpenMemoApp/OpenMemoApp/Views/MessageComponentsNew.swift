@@ -281,7 +281,6 @@ struct SidebarViewNew: View {
     }
 }
 
-// MARK: - Session Row
 struct SessionRow: View {
     let session: ChatSession
     let isSelected: Bool
