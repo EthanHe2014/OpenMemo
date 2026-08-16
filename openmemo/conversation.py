@@ -475,11 +475,45 @@ async def process_message(session_id: str, user_message: str,
 
     conv_manager.add_message(session_id, "assistant", reply, intent=result.get("action") or "chat")
 
-    # Mechanical follow-through (create/schedule) — never alters the AI's words
+    # L1+L2：即时兑现校验 —— AI 说“已记下/会提醒”但本轮回合没落地任务
+    # → 当场自动重试一次，让 AI 补建；而不是等 60s 后的看护才报警。
+    created_count = 0
     try:
+        from .monitor import verify_landing
+        # 先统计本轮回合实际建了几个任务
+        from .tasks import TaskManager as _TM
+        _before = set(t["task_id"] for t in _TM().list_tasks(limit=500))
+        # Mechanical follow-through (create/schedule) — never alters the AI's words
         await _apply_ai_action(result, session_id)
+        _after = set(t["task_id"] for t in _TM().list_tasks(limit=500))
+        created_count = len(_after - _before)
+        problems = verify_landing(user_message, reply, result.get("action") or "chat", created_count, session_id)
+        # 承诺了但没建 → 重试一次：请 AI 用 JSON 补建任务（最多一轮，防止死循环）
+        if problems and (result.get("action") in ("chat", "collecting")
+                         or result.get("action") == "task_added" and created_count == 0):
+            from .ai import call_ai, _extract_json
+            retry = await call_ai(
+                [{"role": "user", "content":
+                    f"你刚才回复用户『{reply[:60]}』并承诺了任务，但系统核对发现没有创建任何任务。\n"
+                    f"用户原话：{user_message}\n"
+                    f"请重新输出 JSON：action=task_added，task 字段包含完整任务信息（content/time/recurring），"
+                    f"reply 用一句话向用户确认已补记。"}],
+                temperature=0.3,
+                json_mode=True,
+            )
+            if not retry["error"] and retry["content"]:
+                parsed = _extract_json(retry["content"])
+                if isinstance(parsed, dict) and parsed.get("task"):
+                    await _apply_ai_action(parsed, session_id)
+                    reply = parsed.get("reply") or reply
+                    conv_manager.add_message(session_id, "assistant", reply, intent="task_added")
+                    print(f"[监控] L1 自动补建：{parsed.get('task', {}).get('content')}")
     except Exception as e:
-        print(f"[conversation] _apply_ai_action error: {e}")
+        print(f"[conversation] 兑现校验/补建出错：{e}")
+        try:
+            await _apply_ai_action(result, session_id)
+        except Exception:
+            pass
 
     if speak_response:
         await speak_safe(reply)

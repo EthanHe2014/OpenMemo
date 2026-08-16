@@ -184,9 +184,18 @@ async def reminder_callback(task_id: int):
     
     print(f"[提醒] 语音：{speech}")
 
-    # 本地语音播报（Mac mini 扬声器）
+    # 本地语音播报（Mac mini 扬声器）—— L4：失败重试一次，仍失败告警
     try:
-        await speak(speech, rate="+0%")
+        ok = await speak(speech, rate="+0%")
+        if not ok:
+            print("[提醒] 首次播报失败，重试一次")
+            ok = await speak(speech, rate="+0%")
+            if not ok:
+                try:
+                    from .monitor import monitor_speak_ok
+                    monitor_speak_ok(False, speech, task_id)
+                except Exception as e:
+                    print(f"[提醒] 播报警告失败：{e}")
     except Exception as e:
         print(f"[提醒] 语音播报出错：{e}")
 
@@ -376,6 +385,30 @@ def start_scheduler():
     print("[调度器] 已启动")
     start_watchdog()
     start_cleanup_job()
+    start_reconcile_job()
+
+
+def start_reconcile_job():
+    """L3：调度健康巡检 —— 每 5 分钟核对一次：待办任务必须有调度 job，
+    缺失即补排（防止任务因重启/异常丢失提醒）。"""
+    from apscheduler.triggers.interval import IntervalTrigger
+
+    def reconcile_tick():
+        try:
+            from .monitor import reconcile_jobs
+            reconcile_jobs()
+        except Exception as e:
+            print(f"[监控] 巡检出错：{e}")
+
+    reconcile_tick()   # 启动即检一次
+    scheduler.add_job(
+        reconcile_tick,
+        IntervalTrigger(minutes=5),
+        id="reconcile_jobs",
+        replace_existing=True,
+        max_instances=1,
+    )
+    print("[监控] 调度巡检已启动（每 5 分钟核对提醒 job）")
 
 
 def start_cleanup_job():

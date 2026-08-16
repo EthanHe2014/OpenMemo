@@ -288,12 +288,23 @@ async def analyze_intent(user_message: str, conversation_context: list = None) -
     
     if result["error"]:
         print(f"[ai] call_ai error: {result['error']}")
+        # L5：AI 健康监控 —— 连续失败阈值告警（不改变回复内容）
+        try:
+            from .monitor import note_ai_failure
+            note_ai_failure(False)
+        except Exception:
+            pass
         return {
             "action": "chat",
             "reply": "抱歉，AI服务暂时不可用，请稍后再试。",
             "task": None,
             "appointment": None
         }
+    try:
+        from .monitor import note_ai_failure
+        note_ai_failure(True)
+    except Exception:
+        pass
 
     parsed = _extract_json(result["content"])
 
