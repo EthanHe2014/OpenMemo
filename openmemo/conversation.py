@@ -249,6 +249,8 @@ def _create_task_from_ai_task(task: dict, session_id: str) -> dict | None:
     task_type = task.get("task_type") or "add"
     task_type = "normal" if task_type == "add" else task_type
     meta = dict(task.get("meta") or {})
+    # 记录来源会话：看护按会话核对“承诺落地”，避免把别家会话的任务算进来
+    meta["session_id"] = session_id
     # Persist the AI's own reminder words so the execution layer reads AI text
     if task.get("reminder_text"):
         meta["reminder_text"] = task["reminder_text"]

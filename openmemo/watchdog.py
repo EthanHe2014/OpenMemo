@@ -57,14 +57,24 @@ def _load_conversations(since: datetime) -> list:
     return [dict(r) for r in rows]
 
 
-def _tasks_created_in_window(start: datetime, end: datetime) -> list:
+def _tasks_created_in_window(start: datetime, end: datetime, session_id: str = None) -> list:
     conn = _db()
     cur = conn.cursor()
-    rows = cur.execute(
-        """SELECT task_id, content, trigger_time, status, created_at FROM tasks
-           WHERE created_at >= ? AND created_at <= ?""",
-        (start.strftime("%Y-%m-%d %H:%M:%S"), end.strftime("%Y-%m-%d %H:%M:%S")),
-    ).fetchall()
+    if session_id:
+        # 只认该会话建的任务（meta_data 里存了 session_id），
+        # 避免同分钟别的会话建了任务导致“看起来落地了”的漏报。
+        rows = cur.execute(
+            """SELECT task_id, content, trigger_time, status, created_at, meta_data FROM tasks
+               WHERE created_at >= ? AND created_at <= ? AND meta_data LIKE ?""",
+            (start.strftime("%Y-%m-%d %H:%M:%S"), end.strftime("%Y-%m-%d %H:%M:%S"),
+             f"%\"session_id\": \"{session_id}\"%"),
+        ).fetchall()
+    else:
+        rows = cur.execute(
+            """SELECT task_id, content, trigger_time, status, created_at FROM tasks
+               WHERE created_at >= ? AND created_at <= ?""",
+            (start.strftime("%Y-%m-%d %H:%M:%S"), end.strftime("%Y-%m-%d %H:%M:%S")),
+        ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -129,7 +139,8 @@ def run_watchdog(hours: int = 24, auto_fix: bool = True) -> list:
                 continue
             window_start = user_dt - timedelta(minutes=1)
             window_end = reply_dt + timedelta(minutes=1)
-            landed = _tasks_created_in_window(window_start, window_end)
+            # 按会话核对落地：同分钟别家会话建的任务不算数
+            landed = _tasks_created_in_window(window_start, window_end, session_id=sid)
             # 任务可能已落地但随后被用户删除/自动清理：删除留痕里能匹配到
             # 用户原话 → 承诺兑现过，不算"承诺未落地"。
             if not landed and tm.task_deleted_in_window(user_text, window_start, window_end):
