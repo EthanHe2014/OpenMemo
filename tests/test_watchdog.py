@@ -53,7 +53,8 @@ class TestWatchdogAutoFix:
         problems = wd_env["run"](hours=24)
         assert any("重复" in p for p in problems), f"应报重复问题: {problems}"
         assert mgr.get_task(t1["task_id"]) is not None, "先建的应保留"
-        assert mgr.get_task(t2["task_id"]) is None, "后建的应删除"
+        assert mgr.get_task(t1["task_id"])["deleted_at"] is None
+        assert mgr.get_task(t2["task_id"])["deleted_at"] is not None, "后建的应被软删除"
 
     def test_normal_task_untouched(self, wd_env):
         """正常未来任务绝不被误伤"""

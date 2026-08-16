@@ -101,9 +101,9 @@ async def patch_settings(request: Request):
 
 
 @app.get("/api/tasks")
-async def list_tasks(status: str = None, limit: int = 20):
-    """List all tasks"""
-    tasks = task_manager.list_tasks(status=status, limit=limit)
+async def list_tasks(status: str = None, limit: int = 20, include_deleted: bool = False):
+    """List all tasks（include_deleted=true 时返回回收站）"""
+    tasks = task_manager.list_tasks(status=status, limit=limit, include_deleted=include_deleted)
     return {"tasks": tasks, "count": len(tasks)}
 
 
@@ -173,9 +173,18 @@ async def update_task(task_id: int, request: Request):
 
 @app.delete("/api/tasks/{task_id}")
 async def delete_task(task_id: int):
-    """Delete a task"""
+    """Soft-delete a task（可恢复）"""
     success = task_manager.delete_task(task_id)
     return {"success": success}
+
+
+@app.post("/api/tasks/{task_id}/restore")
+async def restore_task(task_id: int):
+    """恢复被软删除的任务（回收站）"""
+    task = task_manager.restore_task(task_id)
+    if not task:
+        return JSONResponse({"error": "Task not found or not deleted"}, status_code=404)
+    return {"task": task, "success": True}
 
 
 @app.post("/api/chat")

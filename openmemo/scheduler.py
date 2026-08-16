@@ -418,6 +418,8 @@ def start_cleanup_job():
     def cleanup_tick():
         try:
             task_manager.delete_finished_old(older_than_hours=24)
+            # 软删除超 7 天 → 硬删除（恢复窗口过了）
+            task_manager.purge_deleted_old(older_than_hours=168)
         except Exception as e:
             print(f"[清理] 出错：{e}")
 

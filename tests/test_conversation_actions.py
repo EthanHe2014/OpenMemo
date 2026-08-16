@@ -107,7 +107,38 @@ class TestApplyAiAction:
         from openmemo.conversation import _apply_ai_action
         t = conv_env.add_task("交房租", trigger_time="2026-09-01 08:00")
         asyncio.run(_apply_ai_action({"action": "task_deleted", "task": {"content": "交房租"}}, "s1"))
-        assert conv_env.get_task(t["task_id"]) is None
+        # 软删除：普通列表看不到，但回收站可恢复
+        assert conv_env.get_task(t["task_id"])["deleted_at"] is not None
+        assert all(x["task_id"] != t["task_id"] for x in conv_env.list_tasks())
+        assert any(x["task_id"] == t["task_id"] for x in conv_env.list_deleted_tasks())
+
+    def test_task_restored(self, conv_env):
+        import asyncio
+        from openmemo.conversation import _apply_ai_action
+        t = conv_env.add_task("买牛奶", trigger_time="2026-09-01 08:00")
+        conv_env.delete_task(t["task_id"])
+        asyncio.run(_apply_ai_action({"action": "task_restored", "task": {"content": "买牛奶"}}, "s1"))
+        restored = conv_env.get_task(t["task_id"])
+        assert restored["deleted_at"] is None
+        assert restored["status"] == "pending"
+        assert any(x["task_id"] == t["task_id"] for x in conv_env.list_tasks())
+
+    def test_task_restored_no_match(self, conv_env):
+        import asyncio
+        from openmemo.conversation import _apply_ai_action
+        asyncio.run(_apply_ai_action({"action": "task_restored", "task": {"content": "不存在"}}, "s1"))  # 不崩即可
+
+    def test_task_restored_prefers_exact(self, conv_env):
+        import asyncio
+        from openmemo.conversation import _apply_ai_action
+        a = conv_env.add_task("买牛奶", trigger_time="2026-09-01 08:00")
+        b = conv_env.add_task("帮妈妈买牛奶", trigger_time="2026-09-01 09:00")
+        conv_env.delete_task(a["task_id"])
+        conv_env.delete_task(b["task_id"])
+        asyncio.run(_apply_ai_action({"action": "task_restored", "task": {"content": "买牛奶"}}, "s1"))
+        # 精确匹配的"买牛奶"被恢复，"帮妈妈买牛奶"仍在回收站
+        assert conv_env.get_task(a["task_id"])["deleted_at"] is None
+        assert conv_env.get_task(b["task_id"])["deleted_at"] is not None
 
     def test_task_updated_content(self, conv_env):
         import asyncio
@@ -186,8 +217,8 @@ class TestApplyAiAction:
         assert target["task_id"] == a["task_id"], f"应精确匹配买牛奶，却命中: {target['content']}"
 
         asyncio.run(_apply_ai_action({"action": "task_deleted", "task": {"content": "买牛奶"}}, "s1"))
-        assert conv_env.get_task(a["task_id"]) is None
-        assert conv_env.get_task(b["task_id"]) is not None, "帮妈妈买牛奶 被误删！"
+        assert conv_env.get_task(a["task_id"])["deleted_at"] is not None
+        assert conv_env.get_task(b["task_id"])["deleted_at"] is None, "帮妈妈买牛奶 被误删！"
 
     def test_match_prefers_pending(self, conv_env):
         from openmemo.conversation import _match_task_by_content

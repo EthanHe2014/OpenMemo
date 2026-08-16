@@ -62,17 +62,17 @@ def _tasks_created_in_window(start: datetime, end: datetime, session_id: str = N
     cur = conn.cursor()
     if session_id:
         # 只认该会话建的任务（meta_data 里存了 session_id），
-        # 避免同分钟别的会话建了任务导致“看起来落地了”的漏报。
+        # 避免同分钟别的会话建了任务导致"看起来落地了"的漏报。
         rows = cur.execute(
             """SELECT task_id, content, trigger_time, status, created_at, meta_data FROM tasks
-               WHERE created_at >= ? AND created_at <= ? AND meta_data LIKE ?""",
+               WHERE created_at >= ? AND created_at <= ? AND deleted_at IS NULL AND meta_data LIKE ?""",
             (start.strftime("%Y-%m-%d %H:%M:%S"), end.strftime("%Y-%m-%d %H:%M:%S"),
              f"%\"session_id\": \"{session_id}\"%"),
         ).fetchall()
     else:
         rows = cur.execute(
             """SELECT task_id, content, trigger_time, status, created_at FROM tasks
-               WHERE created_at >= ? AND created_at <= ?""",
+               WHERE created_at >= ? AND created_at <= ? AND deleted_at IS NULL""",
             (start.strftime("%Y-%m-%d %H:%M:%S"), end.strftime("%Y-%m-%d %H:%M:%S")),
         ).fetchall()
     conn.close()
@@ -83,7 +83,7 @@ def _all_tasks() -> list:
     conn = _db()
     cur = conn.cursor()
     rows = cur.execute(
-        "SELECT task_id, content, trigger_time, status, reminder_sent, created_at, is_recurring FROM tasks"
+        "SELECT task_id, content, trigger_time, status, reminder_sent, created_at, is_recurring FROM tasks WHERE deleted_at IS NULL"
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]

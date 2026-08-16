@@ -399,6 +399,26 @@ async def _apply_ai_action(result: dict, session_id: str):
                 print(f"[conversation] task_deleted #{target['task_id']} {target['content']}")
         return
 
+    if action == "task_restored":
+        # AI 指名恢复被删任务：在软删除里按内容找（精确优先），恢复为待办
+        task = result.get("task") or {}
+        content = task.get("content")
+        if content:
+            deleted = task_manager.list_deleted_tasks()
+            if deleted:
+                content = str(content).strip()
+                # 精确匹配优先，其次模糊
+                exact = [t for t in deleted if (t.get("content") or "").strip() == content]
+                pool = exact if exact else deleted
+                pool = sorted(pool, key=lambda t: 0 if (t.get("content") or "") == content else 1)
+                target = pool[0]
+                restored = task_manager.restore_task(target["task_id"])
+                if restored:
+                    print(f"[conversation] task_restored #{target['task_id']} {target['content']}")
+                else:
+                    print(f"[conversation] task_restored 失败 #{target['task_id']}")
+        return
+
     if action == "task_updated":
         # AI 指名编辑任务：content 定位，new_content/time/frequency/status 为新值
         task = result.get("task") or {}

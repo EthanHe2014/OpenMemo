@@ -55,6 +55,14 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # Column already exists
 
+    # Migration: add deleted_at column (软删除/可恢复) if it doesn't exist
+    try:
+        cursor.execute("ALTER TABLE tasks ADD COLUMN deleted_at TEXT DEFAULT NULL")
+        conn.commit()
+        print("Migrated: added deleted_at column")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
     
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS conversations (
@@ -179,14 +187,15 @@ class TaskManager:
             return d
         return None
     
-    def list_tasks(self, status: str = None, limit: int = 20) -> List[dict]:
-        """List tasks, optionally filtered by status"""
+    def list_tasks(self, status: str = None, limit: int = 20, include_deleted: bool = False) -> List[dict]:
+        """List tasks, optionally filtered by status（默认排除软删除）。"""
         conn = get_db()
         cursor = conn.cursor()
         
+        deleted_filter = "" if include_deleted else " AND deleted_at IS NULL"
         if status:
             cursor.execute(
-                """SELECT * FROM tasks WHERE status = ? 
+                f"""SELECT * FROM tasks WHERE status = ? {deleted_filter}
                    ORDER BY 
                      CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 2 END,
                      trigger_time ASC LIMIT ?""",
@@ -194,7 +203,7 @@ class TaskManager:
             )
         else:
             cursor.execute(
-                """SELECT * FROM tasks 
+                f"""SELECT * FROM tasks WHERE 1=1 {deleted_filter}
                    ORDER BY 
                      CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 2 END,
                      trigger_time ASC LIMIT ?""",
@@ -249,7 +258,8 @@ class TaskManager:
         return self.update_task(task_id, status="cancelled")
     
     def delete_task(self, task_id: int) -> bool:
-        """Delete a task（删除留痕，供看护判断承诺落地）"""
+        """软删除任务（可恢复）：标记 deleted_at，保留数据。
+        删除留痕供看护判断承诺落地。"""
         conn = get_db()
         cursor = conn.cursor()
         # 先留痕：记录被删任务的内容，供 watchdog 区分"已落地后被删"与"从未落地"
@@ -261,11 +271,76 @@ class TaskManager:
                 "INSERT INTO task_deletions (task_id, content, deleted_by) VALUES (?, ?, 'user')",
                 (task_id, row["content"]),
             )
-        cursor.execute("DELETE FROM tasks WHERE task_id = ?", (task_id,))
+        cursor.execute(
+            "UPDATE tasks SET deleted_at = datetime('now','localtime'), "
+            "updated_at = datetime('now','localtime') WHERE task_id = ?",
+            (task_id,),
+        )
         affected = cursor.rowcount
         conn.commit()
         conn.close()
         return affected > 0
+
+    def restore_task(self, task_id: int) -> Optional[dict]:
+        """恢复被软删除的任务：清除 deleted_at，状态回到待办。"""
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE tasks SET deleted_at = NULL, status = 'pending', "
+            "updated_at = datetime('now','localtime') WHERE task_id = ? AND deleted_at IS NOT NULL",
+            (task_id,),
+        )
+        affected = cursor.rowcount
+        conn.commit()
+        conn.close()
+        if not affected:
+            return None
+        task = self.get_task(task_id)
+        # 恢复后若还有未来时间，重新调度提醒
+        if task and task.get("trigger_time"):
+            try:
+                from .scheduler import schedule_task
+                schedule_task(task_id, task["trigger_time"])
+            except Exception:
+                pass
+        return task
+
+    def list_deleted_tasks(self, limit: int = 50) -> List[dict]:
+        """列出被软删除的任务（用于恢复）。"""
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM tasks WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT ?",
+            (limit,),
+        )
+        rows = cursor.fetchall()
+        conn.close()
+        result = []
+        for row in rows:
+            d = dict(row)
+            if d.get("meta_data"):
+                try:
+                    d["meta_data"] = json.loads(d["meta_data"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            result.append(d)
+        return result
+
+    def purge_deleted_old(self, older_than_hours: int = 168) -> int:
+        """硬删除超过 N 小时的软删除任务（默认 7 天）。返回删除条数。"""
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM tasks WHERE deleted_at IS NOT NULL "
+            "AND deleted_at < datetime('now','localtime', ?)",
+            (f"-{int(older_than_hours)} hours",),
+        )
+        affected = cursor.rowcount
+        conn.commit()
+        conn.close()
+        if affected:
+            print(f"[清理] 硬删除 {affected} 个超过 {older_than_hours}h 的软删除任务")
+        return affected
 
     def task_deleted_in_window(self, content_fragment: str, start, end) -> bool:
         """指定时间窗口内，是否删除过与 content_fragment 相关的任务。
@@ -360,12 +435,13 @@ class TaskManager:
         conn.close()
         return [dict(row) for row in rows]
     
-    def search_tasks(self, query: str) -> List[dict]:
-        """Search tasks by content"""
+    def search_tasks(self, query: str, include_deleted: bool = False) -> List[dict]:
+        """Search tasks by content（默认排除软删除）。"""
         conn = get_db()
         cursor = conn.cursor()
+        deleted_filter = "" if include_deleted else " AND deleted_at IS NULL"
         cursor.execute(
-            "SELECT * FROM tasks WHERE content LIKE ? AND status != 'cancelled' ORDER BY trigger_time ASC",
+            f"SELECT * FROM tasks WHERE content LIKE ? AND status != 'cancelled' {deleted_filter} ORDER BY trigger_time ASC",
             (f"%{query}%",)
         )
         rows = cursor.fetchall()

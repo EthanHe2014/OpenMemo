@@ -58,7 +58,51 @@ class TestTaskManager:
         task = task_manager.add_task("Delete test")
         success = task_manager.delete_task(task["task_id"])
         assert success is True
+        # 软删除：任务还在库里但标记 deleted_at（可恢复）
+        deleted = task_manager.get_task(task["task_id"])
+        assert deleted is not None
+        assert deleted["deleted_at"] is not None
+        # 普通列表里看不到
+        assert all(t["task_id"] != task["task_id"] for t in task_manager.list_tasks())
+        # 回收站里能看到
+        assert any(t["task_id"] == task["task_id"] for t in task_manager.list_deleted_tasks())
+
+    def test_restore_task(self, task_manager):
+        task = task_manager.add_task("Restore test", trigger_time="2026-09-01 08:00")
+        task_manager.delete_task(task["task_id"])
+        restored = task_manager.restore_task(task["task_id"])
+        assert restored is not None
+        assert restored["deleted_at"] is None
+        assert restored["status"] == "pending"
+        # 恢复到普通列表
+        assert any(t["task_id"] == task["task_id"] for t in task_manager.list_tasks())
+
+    def test_restore_non_deleted_returns_none(self, task_manager):
+        task = task_manager.add_task("X")
+        assert task_manager.restore_task(task["task_id"]) is None
+
+    def test_purge_deleted_old(self, task_manager):
+        import openmemo.tasks as tasks_module
+        task = task_manager.add_task("Purge test")
+        task_manager.delete_task(task["task_id"])
+        # 伪造旧 deleted_at
+        conn = tasks_module.get_db()
+        conn.execute(
+            "UPDATE tasks SET deleted_at = datetime('now','localtime','-200 hours') WHERE task_id=?",
+            (task["task_id"],),
+        )
+        conn.commit()
+        conn.close()
+        n = task_manager.purge_deleted_old(older_than_hours=168)
+        assert n == 1
         assert task_manager.get_task(task["task_id"]) is None
+
+    def test_purge_keeps_recent_deleted(self, task_manager):
+        task = task_manager.add_task("Keep test")
+        task_manager.delete_task(task["task_id"])
+        n = task_manager.purge_deleted_old(older_than_hours=168)
+        assert n == 0
+        assert task_manager.get_task(task["task_id"]) is not None
     
     def test_list_tasks(self, task_manager):
         task_manager.add_task("Task 1", priority="high")

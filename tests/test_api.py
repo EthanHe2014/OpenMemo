@@ -86,7 +86,22 @@ class TestTasksAPI:
         t = client.post("/api/tasks", json={"content": "E"}).json()["task"]
         r = client.delete(f"/api/tasks/{t['task_id']}")
         assert r.json()["success"] is True
-        assert client.get(f"/api/tasks/{t['task_id']}").status_code == 404
+        # 软删除：普通列表没有，回收站有
+        assert client.get(f"/api/tasks/{t['task_id']}").json()["task"]["deleted_at"] is not None
+        assert all(x["task_id"] != t["task_id"] for x in client.get("/api/tasks").json()["tasks"])
+        assert any(x["task_id"] == t["task_id"] for x in client.get("/api/tasks", params={"include_deleted": True}).json()["tasks"])
+
+    def test_restore_task_api(self):
+        t = client.post("/api/tasks", json={"content": "R"}).json()["task"]
+        client.delete(f"/api/tasks/{t['task_id']}")
+        r = client.post(f"/api/tasks/{t['task_id']}/restore")
+        assert r.status_code == 200
+        assert r.json()["task"]["deleted_at"] is None
+        assert any(x["task_id"] == t["task_id"] for x in client.get("/api/tasks").json()["tasks"])
+
+    def test_restore_nonexistent_404(self):
+        r = client.post("/api/tasks/999999/restore")
+        assert r.status_code == 404
 
     def test_chat_requires_message(self):
         r = client.post("/api/chat", json={})
