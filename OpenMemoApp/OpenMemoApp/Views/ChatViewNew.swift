@@ -2,7 +2,8 @@ import SwiftUI
 
 struct ChatViewNew: View {
     @Environment(ChatViewModel.self) private var chatVM
-    @State private var voice = VoiceInputManager()
+    // 统一 STT 层：自动检测平台（Apple→系统识别 / Android→系统识别 / 其它→本地）
+    @State private var voice: any STTProvider = STTEngine.shared
     @State private var speechAuthGranted = false
     @State private var showSidebar = false
     
@@ -435,7 +436,7 @@ struct SendButton: View {
 }
 
 struct VoiceStatusBar: View {
-    let voice: VoiceInputManager
+    let voice: any STTProvider
     
     var body: some View {
         HStack(spacing: 10) {

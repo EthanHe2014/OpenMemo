@@ -106,28 +106,55 @@ struct SettingsViewNew: View {
 
                     // Voice section
                     settingsSection(title: "语音") {
-                        Toggle(isOn: $wakeWordEnabled) {
+                        VStack(spacing: 14) {
+                            Toggle(isOn: $wakeWordEnabled) {
+                                HStack(spacing: 12) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(OMColors.success.opacity(0.2))
+                                            .frame(width: 36, height: 36)
+                                        Image(systemName: "ear")
+                                            .font(.system(size: 16))
+                                            .foregroundStyle(OMColors.success)
+                                    }
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("「小麦小麦」唤醒")
+                                            .font(OMFonts.subheadline.weight(.medium))
+                                            .foregroundStyle(.white)
+                                        Text("说出唤醒词即可开始对话")
+                                            .font(OMFonts.caption2)
+                                            .foregroundStyle(.white.opacity(0.5))
+                                    }
+                                }
+                            }
+                            .tint(OMColors.success)
+
+                            Divider()
+                                .background(Color.white.opacity(0.1))
+
+                            // 自动检测的 STT 引擎（跨平台：Apple/Android/本地）
                             HStack(spacing: 12) {
                                 ZStack {
                                     Circle()
-                                        .fill(OMColors.success.opacity(0.2))
+                                        .fill(OMColors.info.opacity(0.2))
                                         .frame(width: 36, height: 36)
-                                    Image(systemName: "ear")
+                                    Image(systemName: "waveform")
                                         .font(.system(size: 16))
-                                        .foregroundStyle(OMColors.success)
+                                        .foregroundStyle(OMColors.info)
                                 }
 
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("「小麦小麦」唤醒")
+                                    Text("语音识别引擎")
                                         .font(OMFonts.subheadline.weight(.medium))
                                         .foregroundStyle(.white)
-                                    Text("说出唤醒词即可开始对话")
+                                    Text("自动检测：\(STTEngine.currentPlatform.rawValue)")
                                         .font(OMFonts.caption2)
                                         .foregroundStyle(.white.opacity(0.5))
                                 }
+                                Spacer()
                             }
                         }
-                        .tint(OMColors.success)
                     }
 
                     // About section
