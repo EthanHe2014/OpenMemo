@@ -164,9 +164,9 @@ struct SidebarViewNew: View {
     
     var body: some View {
         ZStack(alignment: .leading) {
-            // Backdrop
-            OMColors.background
-                .opacity(0.9)
+            // Backdrop：轻量遮罩（能看到后面的聊天内容，不再黑屏）
+            Color.black
+                .opacity(0.25)
                 .ignoresSafeArea()
                 .onTapGesture { close() }
             
@@ -217,7 +217,7 @@ struct SidebarViewNew: View {
             .frame(width: 320)
             .frame(maxHeight: .infinity)
             .background(
-                OMColors.surface
+                OMColors.surface.opacity(0.85)
                     .overlay(.ultraThinMaterial)
             )
             .clipShape(RoundedRectangle(cornerRadius: 0))
