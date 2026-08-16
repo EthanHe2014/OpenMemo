@@ -140,6 +140,8 @@ struct ChatViewNew: View {
                     }
                 }
                 .padding()
+                // 底部留白：内容不被输入栏/Home 指示条遮挡（iPhone 关键）
+                .padding(.bottom, 90)
             }
             .onChange(of: chatVM.messages.count) { _, _ in
                 scrollToBottom(scroll: scroll)
@@ -238,8 +240,15 @@ struct ChatViewNew: View {
         }
         .frame(maxWidth: .infinity)
         .background(
-            OMColors.surface
-                .overlay(.ultraThinMaterial)
+            VStack(spacing: 0) {
+                OMColors.surface
+                    .overlay(.ultraThinMaterial)
+                // iPhone：背景延伸进底部安全区（Home 条下不留缝隙）
+                #if !targetEnvironment(macCatalyst)
+                OMColors.surface
+                    .frame(height: 20)
+                #endif
+            }
         )
     }
     
