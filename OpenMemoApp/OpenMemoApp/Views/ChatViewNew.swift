@@ -168,25 +168,38 @@ struct ChatViewNew: View {
         VStack(spacing: 28) {
             // Animated logo
             ZStack {
+                // 图标尺寸：Mac 保持原样，iPhone 缩小一档
+                #if targetEnvironment(macCatalyst)
+                let logoSize: CGFloat = 90
+                let ringBase: CGFloat = 100
+                let ringStep: CGFloat = 30
+                let sparkleSize: CGFloat = 40
+                #else
+                let logoSize: CGFloat = 70
+                let ringBase: CGFloat = 80
+                let ringStep: CGFloat = 24
+                let sparkleSize: CGFloat = 32
+                #endif
+                
                 // Outer glow rings
                 ForEach(0..<3) { i in
                     Circle()
                         .stroke(OMColors.primaryGradient, lineWidth: 1)
-                        .frame(width: 100 + CGFloat(i) * 30, height: 100 + CGFloat(i) * 30)
+                        .frame(width: ringBase + CGFloat(i) * ringStep, height: ringBase + CGFloat(i) * ringStep)
                         .opacity(0.3 - Double(i) * 0.1)
                         .scaleEffect(1 + Double(i) * 0.1)
                 }
                 
                 // Main logo
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                RoundedRectangle(cornerRadius: logoSize * 0.31, style: .continuous)
                     .fill(OMColors.primaryGradient)
-                    .frame(width: 90, height: 90)
+                    .frame(width: logoSize, height: logoSize)
                     .overlay(
                         Image(systemName: "sparkles")
-                            .font(.system(size: 40))
+                            .font(.system(size: sparkleSize))
                             .foregroundStyle(.white)
                     )
-                    .shadow(color: Color(hex: "FF6B6B").opacity(0.4), radius: 30, x: 0, y: 10)
+                    .shadow(color: Color(hex: "FF6B6B").opacity(0.4), radius: logoSize * 0.33, x: 0, y: logoSize * 0.11)
             }
             
             VStack(spacing: 8) {
