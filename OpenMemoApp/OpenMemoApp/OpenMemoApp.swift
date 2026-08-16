@@ -21,8 +21,21 @@ struct ContentView: View {
     @State private var reminderBannerVisible = false
     @State private var alertBannerVisible = false
 
-    var body: some View {
+    /// iPhone：整体缩小 10%（含布局与图标），用反缩放补偿尺寸避免边缘留白
+    private var content: some View {
+        #if targetEnvironment(macCatalyst)
         MainContainerView()
+        #else
+        MainContainerView()
+            .scaleEffect(0.9)
+            .frame(width: UIScreen.main.bounds.width / 0.9,
+                   height: UIScreen.main.bounds.height / 0.9)
+            .dynamicTypeSize(.small)
+        #endif
+    }
+
+    var body: some View {
+        content
         .task { // 先加载 + 启动轮询（不等权限弹窗，弹窗可能一直挂着）；权限申请并行进行
             taskVM.startPolling()
             await taskVM.load()
