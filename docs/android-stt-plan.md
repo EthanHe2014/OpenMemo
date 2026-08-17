@@ -33,10 +33,17 @@
 
 ## App 端（SwiftUI，Apple 平台）
 
-- `Services/STTEngine.swift` 已有统一 `STTProvider` 协议 + 平台自动检测：
-  - Apple 平台 → `AppleSTTProvider`（SFSpeechRecognizer，已就位）
+- `Services/STTEngine.swift` 统一 `STTProvider` 协议 + 平台自动检测：
+  - Apple 平台 → `AppleSTTProvider`（SFSpeechRecognizer，系统识别）
+  - **智能降级**：Apple 识别不可用（权限被拒/引擎不支持）时自动切到
+    `LocalSTTProvider`（服务器 sherpa-onnx 离线转写），语音始终可用
   - Android 移植版 → `AndroidSTTProvider`（Kotlin 按同协议实现 SpeechRecognizer）
-  - 其它/未知 → `LocalSTTProvider`（本地离线引擎接入点）
+  - 其它/未知 → `LocalSTTProvider`
+- `Services/LocalSTTProvider.swift`（真实实现）：
+  - App 内 AVAudioEngine 录音（16kHz 单声道 WAV）
+  - POST 服务器 `{baseURL}/api/stt` → sherpa-onnx 离线转写 → 文本回调
+  - 服务器可达性探测（空 body → 400 即证明端点存在）
+  - 与 Apple 引擎同款纪律：每次会话全新 AVAudioEngine，stop 后销毁
 - SwiftUI 包本身只跑 Apple 平台，Android/本地实现在移植版按协议实现即可，上层零改动。
 
 ## 模型重装指引（如果换机器）

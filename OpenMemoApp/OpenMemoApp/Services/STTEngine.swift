@@ -61,13 +61,20 @@ protocol STTProvider: AnyObject {
     var isListening: Bool { get }
 }
 
-/// STT 引擎入口：自动检测平台 → 返回对应 Provider
+/// STT 引擎入口：自动检测平台 → 返回对应 Provider（带智能降级）
 enum STTEngine {
     @MainActor
     static let shared: any STTProvider = {
         switch detectSTTPlatform() {
         case .apple:
-            return AppleSTTProvider()
+            // Apple 平台：优先系统识别；不可用（权限被拒/引擎不支持）时
+            // 自动降级到本地离线 STT（服务器 sherpa-onnx），保证语音可用
+            let apple = AppleSTTProvider()
+            if apple.isAvailable {
+                return apple
+            }
+            let local = LocalSTTProvider()
+            return local.isAvailable ? local : apple  // 两头都不可用就退回 Apple（弹权限框）
         case .android:
             // Android 移植版接入点（见 AndroidSTTProvider 占位）
             return AndroidSTTProvider()
@@ -132,26 +139,10 @@ final class AndroidSTTProvider: STTProvider {
     func stop() {}
 }
 
-// MARK: - 本地离线实现（占位）
+// MARK: - 本地离线实现（见 LocalSTTProvider.swift）
 
-/// 本地离线 STT（sherpa-onnx / Vosk 等）：
-/// 不依赖系统识别服务，适合不支持平台或离线场景。
-/// ⚠️ 模型接入点：移植时把 ONNX 推理包进来即可。
-@MainActor
-final class LocalSTTProvider: STTProvider {
-    let platform: STTPlatform = .local
-    var isAvailable: Bool { false }   // 模型未打包前不可用
-
-    var onMessageReady: ((String) -> Void)?
-    var liveText: String = ""
-    var isTranscribing: Bool = false
-    var isWakeArmed: Bool = false
-    var isListening: Bool = false
-
-    func startVoiceInput() {}
-    func setWakeMode(_ enabled: Bool) {}
-    func stop() {}
-}
+// 真实实现已移到 LocalSTTProvider.swift：
+// App 内录音 → WAV → 服务器 /api/stt（sherpa-onnx 离线转写）→ 文本。
 
 // MARK: - 辅助
 

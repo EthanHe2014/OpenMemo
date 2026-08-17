@@ -37,6 +37,7 @@
 		8FE54328A776A3B771A38402E8B89839 /* ChatViewNew.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20D0DB674F137FD952FDC378E6B758BD /* ChatViewNew.swift */; };
 		98F392F307BAA6C746F44A094C54B050 /* TaskListViewNew.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B0F868164F4B63AE1FF50780B4E891A /* TaskListViewNew.swift */; };
 		ACFD02015216B0906D6D8197760EA888 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF73A5B7DF5609B7F5B3787E260F778C /* SettingsView.swift */; };
+		AF90F5DF7EA49441A1D2F8EDFD91E658 /* LocalSTTProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D8E4A01CF460584C7C27DD37366160F /* LocalSTTProvider.swift */; };
 		B20C997B0F56CE893C08DD67F8286018 /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13FA27488EB8D661C37BEAC94C868244 /* ChatViewModel.swift */; };
 		C46BB56F4F5F6D077766BEF092843433 /* AddTaskView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 857DA4318BB6EBB68DCB5D74A6E0D21E /* AddTaskView.swift */; };
 		C7FB01A662AD03E13905D0F97B2D89F3 /* VoiceInputManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 218B53B706FC5B1F1C28D8FB88928F9A /* VoiceInputManager.swift */; };
@@ -48,6 +49,7 @@
 		E9CAA839B3F314F42ABDD36C5F9F0E7A /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13FA27488EB8D661C37BEAC94C868244 /* ChatViewModel.swift */; };
 		F3E25A017BEFD0F9000C8E04EC7306BC /* MainContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C3118C127F74720A12121D1D126205A /* MainContainerView.swift */; };
 		F4FCEEB6CA74E28E725F909E3393CA98 /* TaskDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 428BADDB32345CCA623D11F5F18D0E3C /* TaskDetailView.swift */; };
+		F78CBBEB15E4F0BCC978813A1F611689 /* LocalSTTProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D8E4A01CF460584C7C27DD37366160F /* LocalSTTProvider.swift */; };
 		FFAE772ABEA631D7F1467FE9D74D52EB /* OpenMemoAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 524E53A89F8D859299CE9CF131352452 /* OpenMemoAPI.swift */; };
 /* End PBXBuildFile section */
 
@@ -69,6 +71,7 @@
 		8F23EC2FB377E5C4688CEFEF53AAA1CE /* OpenMemoAppPhone.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OpenMemoAppPhone.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9B0F868164F4B63AE1FF50780B4E891A /* TaskListViewNew.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskListViewNew.swift; sourceTree = "<group>"; };
 		9C3118C127F74720A12121D1D126205A /* MainContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainContainerView.swift; sourceTree = "<group>"; };
+		9D8E4A01CF460584C7C27DD37366160F /* LocalSTTProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalSTTProvider.swift; sourceTree = "<group>"; };
 		A6BB686A1F2274A64CA22FAA78160F46 /* TaskListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskListViewModel.swift; sourceTree = "<group>"; };
 		AF3D1609A5DDE7A9D549FADA992615F0 /* Task.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Task.swift; sourceTree = "<group>"; };
 		C63CC19D40AE13B3DFAC04CC7F7D293E /* SettingsViewNew.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewNew.swift; sourceTree = "<group>"; };
@@ -149,6 +152,7 @@
 			isa = PBXGroup;
 			children = (
 				7D99BF3FDC9FE5FFB1FF87BE32623D27 /* LocalNotificationManager.swift */,
+				9D8E4A01CF460584C7C27DD37366160F /* LocalSTTProvider.swift */,
 				6F91AAAFEB2B714FA0CA60207B565C2D /* STTEngine.swift */,
 				218B53B706FC5B1F1C28D8FB88928F9A /* VoiceInputManager.swift */,
 			);
@@ -271,6 +275,7 @@
 				8FE54328A776A3B771A38402E8B89839 /* ChatViewNew.swift in Sources */,
 				11DE489C9EC66B844063EFCD392877DD /* DesignSystem.swift in Sources */,
 				7ED051FA74363EDE488FB1D5464835D6 /* LocalNotificationManager.swift in Sources */,
+				AF90F5DF7EA49441A1D2F8EDFD91E658 /* LocalSTTProvider.swift in Sources */,
 				2AA3088153C182DB4674E9644527F8AD /* MainContainerView.swift in Sources */,
 				74CEBAC3736877E3A0242C61CE4CC8BF /* MessageComponentsNew.swift in Sources */,
 				897F987B59BEB9F76CE1FC30685CAFE2 /* MultilineTextField.swift in Sources */,
@@ -298,6 +303,7 @@
 				326F0B580B73687B7CC66A1AF80954BF /* ChatViewNew.swift in Sources */,
 				E83ACC4A50B6585FF039741E2DCFA889 /* DesignSystem.swift in Sources */,
 				6264D83B5006F45761782C4CA9174581 /* LocalNotificationManager.swift in Sources */,
+				F78CBBEB15E4F0BCC978813A1F611689 /* LocalSTTProvider.swift in Sources */,
 				F3E25A017BEFD0F9000C8E04EC7306BC /* MainContainerView.swift in Sources */,
 				63BF83E373E48A67D7A37989C49877BD /* MessageComponentsNew.swift in Sources */,
 				3410906D2CA7ADB43C946CE3AF556AFC /* MultilineTextField.swift in Sources */,
