@@ -287,6 +287,193 @@
         const API_BASE = window.location.origin;
         const SESSION_ID = 'web_user_' + Math.random().toString(36).substr(2, 9);
 
+        // ══════════════════════════════════════════════════════════
+        // 通用语音输入（STT）—— 自动检测平台，动态切换识别引擎
+        //   • iPhone Safari  → Web Speech API（Apple 引擎）
+        //   • Android Chrome → Web Speech API（Android 引擎）
+        //   • 其它不兼容浏览器 → 本地录音 + 服务器 sherpa-onnx 离线识别
+        // ══════════════════════════════════════════════════════════
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
+                      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const isAndroid = /Android/.test(navigator.userAgent);
+
+        // 引擎选择：有 Web Speech → 用系统引擎；否则 → 本地 STT
+        let sttEngine = SR ? (isAndroid ? 'Android 系统识别' :
+                              isIOS ? 'Apple 系统识别' : '浏览器语音识别')
+                           : '本地离线 STT';
+        let sttSupported = !!SR;
+        let isListening = false;
+        let recognition = null;
+        let mediaRecorder = null;
+        let audioChunks = [];
+
+        // 显示引擎徽章
+        function updateSttBadge(text) {
+            const el = document.getElementById('stt-status');
+            if (el) el.innerHTML = `<span class="provider">🎙 ${sttEngine}</span> ${text || ''}`;
+        }
+
+        // 初始化识别器（Web Speech API）
+        function initRecognition() {
+            if (!SR) return null;
+            const r = new SR();
+            r.lang = 'zh-CN';
+            r.continuous = false;
+            r.interimResults = true;
+            r.maxAlternatives = 1;
+            r.onresult = (e) => {
+                let interim = '', final = '';
+                for (let i = e.resultIndex; i < e.results.length; i++) {
+                    const t = e.results[i][0].transcript;
+                    if (e.results[i].isFinal) final += t; else interim += t;
+                }
+                const input = document.getElementById('user-input');
+                if (final) input.value = final;
+                else if (interim) input.value = interim;
+                updateSttBadge(interim ? '…' : '✅');
+            };
+            r.onerror = (e) => {
+                if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+                    updateSttBadge('❌ 麦克风权限被拒绝');
+                } else if (e.error === 'no-speech') {
+                    updateSttBadge('没有听到声音');
+                } else {
+                    updateSttBadge('❌ ' + e.error);
+                }
+                setListening(false);
+            };
+            r.onend = () => setListening(false);
+            return r;
+        }
+
+        // 录音（本地 STT 兜底用）
+        async function startLocalRecording() {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            audioChunks = [];
+            // 统一录 16kHz 单声道，避免重采样
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const src = ctx.createMediaStreamSource(stream);
+            const dest = ctx.createMediaStreamDestination();
+            const rec = new MediaRecorder(dest.stream);
+            mediaRecorder = rec;
+
+            // 用 ScriptProcessor 降采样到 16k 单声道
+            const sampleRate = ctx.sampleRate;
+            const targetRate = 16000;
+            const processor = ctx.createScriptProcessor(4096, 1, 1);
+            const pcm = [];
+            let last = 0;
+            processor.onaudioprocess = (e) => {
+                const input = e.inputBuffer.getChannelData(0);
+                for (let i = 0; i < input.length; i += Math.max(1, Math.floor(sampleRate / targetRate))) {
+                    pcm.push(input[i]);
+                }
+            };
+            src.connect(processor);
+            processor.connect(dest);
+
+            rec.ondataavailable = (e) => audioChunks.push(e.data);
+            rec.onstop = async () => {
+                src.disconnect(); processor.disconnect();
+                stream.getTracks().forEach(t => t.stop());
+
+                // 组 WAV（16kHz 16-bit mono）
+                const blob = new Blob(audioChunks, { type: 'audio/webm' });
+                const buf = await blob.arrayBuffer();
+                // MediaRecorder 产出 webm/opus → 用解码器转 PCM
+                try {
+                    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    const dec = await audioCtx.decodeAudioData(buf);
+                    const wav = encodeWav(dec.getChannelData(0), 16000);
+                    await sendToLocalStt(wav);
+                } catch (err) {
+                    updateSttBadge('❌ 录音解码失败');
+                }
+            };
+            rec.start();
+            updateSttBadge('录音中…（点🎤停止）');
+        }
+
+        // PCM → WAV 二进制
+        function encodeWav(samples, sampleRate) {
+            const buffer = new ArrayBuffer(44 + samples.length * 2);
+            const view = new DataView(buffer);
+            const writeStr = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+            writeStr(0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true); writeStr(8, 'WAVE');
+            writeStr(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+            view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+            writeStr(36, 'data'); view.setUint32(40, samples.length * 2, true);
+            for (let i = 0; i < samples.length; i++) {
+                const s = Math.max(-1, Math.min(1, samples[i]));
+                view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+            }
+            return new Blob([buffer], { type: 'audio/wav' });
+        }
+
+        // 发给服务器本地 STT
+        async function sendToLocalStt(wavBlob) {
+            updateSttBadge('本地识别中…');
+            try {
+                const res = await fetch(`${API_BASE}/api/stt`, { method: 'POST', body: wavBlob });
+                const data = await res.json();
+                if (data.text) {
+                    document.getElementById('user-input').value = data.text;
+                    updateSttBadge('✅');
+                } else {
+                    updateSttBadge('未识别到内容');
+                }
+            } catch (err) {
+                updateSttBadge('❌ 识别服务不可用');
+            }
+        }
+
+        function setListening(on) {
+            isListening = on;
+            const btn = document.getElementById('mic-btn');
+            btn.classList.toggle('listening', on);
+            btn.textContent = on ? '⏹' : '🎤';
+        }
+
+        async function toggleVoice() {
+            if (isListening) {
+                // 停止
+                if (recognition) recognition.stop();
+                if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+                setListening(false);
+                return;
+            }
+
+            if (!sttSupported) {
+                // 不兼容浏览器 → 本地 STT（服务器 sherpa-onnx）
+                try {
+                    await startLocalRecording();
+                    setListening(true);
+                } catch (err) {
+                    updateSttBadge('❌ 无法访问麦克风');
+                }
+                return;
+            }
+
+            // 支持 Web Speech → 系统引擎
+            try {
+                recognition = initRecognition();
+                recognition.start();
+                setListening(true);
+                updateSttBadge('听您说话…');
+            } catch (err) {
+                updateSttBadge('❌ 启动识别失败');
+                setListening(false);
+            }
+        }
+
+        // 页面加载时显示引擎状态
+        updateSttBadge(sttSupported ? '就绪' : '录音兜底');
+        if (!sttSupported) {
+            document.getElementById('mic-btn').classList.add('unsupported');
+        }
+
         // Load tasks on page load
         loadTasks();
 

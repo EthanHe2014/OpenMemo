@@ -224,6 +224,44 @@ async def stop_speak_text():
     return {"success": True}
 
 
+@app.post("/api/stt")
+async def stt_transcribe(request: Request):
+    """本地离线语音识别（不兼容手机的兜底 STT）。
+
+    浏览器录音（Web Audio → WAV）后 POST 到此端点，
+    服务器用 sherpa-onnx 离线转写，音频不出本机。
+
+    Body: 原始 WAV 二进制（16kHz 16-bit mono，或任意采样率，自动重采样）
+    Returns: {"text": "...", "engine": "sherpa-onnx"} 或 501/400
+    """
+    from .stt import local_stt_available, transcribe_wav
+
+    if not local_stt_available():
+        return JSONResponse({"error": "本地 STT 模型未安装"}, status_code=501)
+
+    body = await request.body()
+    if not body or len(body) < 100:  # 44 字节 WAV 头 + 至少一点数据
+        return JSONResponse({"error": "空的音频数据"}, status_code=400)
+
+    # 写临时文件（内存转 WAV：先写原始，再让 transcribe_wav 处理）
+    import tempfile
+    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    tmp.write(body)
+    tmp.close()
+    try:
+        text = transcribe_wav(tmp.name)
+    finally:
+        import os
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
+
+    if not text:
+        return JSONResponse({"text": "", "engine": "sherpa-onnx"})
+    return {"text": text, "engine": "sherpa-onnx"}
+
+
 @app.get("/api/conversations/{session_id}")
 async def get_conversations(session_id: str, limit: int = 20):
     """Get conversation history"""
