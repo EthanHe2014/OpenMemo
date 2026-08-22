@@ -188,18 +188,45 @@ def _extract_json(content: str) -> dict | None:
             return parsed
 
     brace_start = content.find('{')
-    brace_end = content.rfind('}')
     if brace_start != -1:
-        if brace_end > brace_start:
-            parsed = _try_parse_or_repair(content[brace_start:brace_end + 1])
+        # 用括号配对找到第一个完整 JSON 对象（AI 偶尔在 JSON 后追加散文/思考）
+        obj_text = _match_balanced(content, brace_start)
+        if obj_text:
+            parsed = _try_parse_or_repair(obj_text)
             if parsed:
                 return parsed
-        else:
-            # no closing brace at all -> truncated; repair from '{' to end
-            parsed = _try_parse_or_repair(content[brace_start:])
-            if parsed:
-                return parsed
+        # 没有完整闭合 → 可能被截断；从 '{' 到结尾尝试修复
+        parsed = _try_parse_or_repair(content[brace_start:])
+        if parsed:
+            return parsed
 
+    return None
+
+
+def _match_balanced(text: str, start: int) -> str | None:
+    """从 start 的 '{' 开始，用深度计数找到配对的 '}'，返回完整 JSON 子串。
+    支持字符串内的括号（跳过 "..." 和转义）。找不到闭合时返回 None。"""
+    depth = 0
+    in_str = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_str:
+            if escape:
+                escape = False
+            elif ch == '\\':
+                escape = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == 0:
+                return text[start:i + 1]
     return None
 
 
@@ -320,9 +347,32 @@ async def analyze_intent(user_message: str, conversation_context: list = None) -
                 "search": parsed.get("search"),
             }
 
+    # JSON 解析失败 → 绝不把原始输出（可能含 {\"action\":...} JSON）展示给用户。
+    # 用极简提示重试一次，逼模型只回 JSON；仍失败则给安全兜底回复。
+    if result.get("content"):
+        try:
+            retry_result = await call_ai(
+                messages,
+                enhanced_prompt + "\n\n上次输出不是合法 JSON，请只输出一个 JSON 对象，"
+                "字段：action/reply/task/tasks/appointment/search，不要任何解释或代码块标记。",
+                retries=1,
+            )
+            retry_parsed = _extract_json(retry_result.get("content"))
+            if retry_parsed and isinstance(retry_parsed, dict) and retry_parsed.get("reply"):
+                return {
+                    "action": retry_parsed.get("action", "chat"),
+                    "reply": retry_parsed.get("reply", "好的，已记下。"),
+                    "task": retry_parsed.get("task"),
+                    "tasks": retry_parsed.get("tasks"),
+                    "appointment": retry_parsed.get("appointment"),
+                    "search": retry_parsed.get("search"),
+                }
+        except Exception:
+            pass
+
     return {
         "action": "chat",
-        "reply": result["content"] if result["content"] else "我没太理解，能再说一遍吗？",
+        "reply": "嗯，我在听，你再说一遍？",
         "task": None,
         "appointment": None
     }
