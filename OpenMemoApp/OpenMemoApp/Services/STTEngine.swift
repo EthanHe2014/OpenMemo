@@ -59,6 +59,8 @@ protocol STTProvider: AnyObject {
     var isWakeArmed: Bool { get }
     /// 是否在监听（引擎运行中）
     var isListening: Bool { get }
+    /// 本会话录音文件（说话人识别用；无则 nil）
+    var lastSessionAudioURL: URL? { get }
 }
 
 /// STT 引擎入口：自动检测平台 → 返回对应 Provider（带智能降级）
@@ -111,6 +113,7 @@ final class AppleSTTProvider: STTProvider {
     var isTranscribing: Bool { manager.isTranscribing }
     var isWakeArmed: Bool { manager.isWakeArmed }
     var isListening: Bool { manager.isListening }
+    var lastSessionAudioURL: URL? { manager.lastSessionAudioURL }
 
     func startVoiceInput() { manager.startVoiceInput() }
     func setWakeMode(_ enabled: Bool) { manager.setWakeMode(enabled) }
@@ -133,6 +136,7 @@ final class AndroidSTTProvider: STTProvider {
     var isTranscribing: Bool = false
     var isWakeArmed: Bool = false
     var isListening: Bool = false
+    var lastSessionAudioURL: URL? { nil }
 
     func startVoiceInput() {}
     func setWakeMode(_ enabled: Bool) {}

@@ -44,7 +44,18 @@ struct ChatViewNew: View {
             await chatVM.startFresh()
             voice.onMessageReady = { text in
                 chatVM.inputText = text
-                chatVM.send()
+                // 说话人识别（Apple 本地模型；无模型/失败时 speaker=nil 静默跳过）
+                let audioURL = voice.lastSessionAudioURL
+                if SpeakerRecognizer.shared.isModelReady, let audioURL {
+                    Task { @MainActor in
+                        let results = await SpeakerRecognizer.shared.identifySpeaker(audioURL: audioURL)
+                        let speaker = results.first.map { $0.0 }
+                        try? FileManager.default.removeItem(at: audioURL)
+                        chatVM.sendVoice(text: text, speaker: speaker)
+                    }
+                } else {
+                    chatVM.send()
+                }
             }
             // 唤醒词开关（设置页持久化）：默认开，关了就不监听（与 Mac 一致）
             let wakeEnabled = UserDefaults.standard.object(forKey: "wakeWordEnabled") as? Bool ?? true

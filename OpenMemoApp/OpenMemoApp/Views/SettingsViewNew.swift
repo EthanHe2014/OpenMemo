@@ -154,6 +154,33 @@ struct SettingsViewNew: View {
                                 }
                                 Spacer()
                             }
+
+                            Divider()
+                                .background(Color.white.opacity(0.1))
+
+                            // 说话人识别（Apple 原生：Create ML + SoundAnalysis）
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    Circle()
+                                        .fill(OMColors.info.opacity(0.2))
+                                        .frame(width: 36, height: 36)
+                                    Image(systemName: "person.wave.2")
+                                        .font(.system(size: 16))
+                                        .foregroundStyle(OMColors.info)
+                                }
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("说话人识别")
+                                        .font(OMFonts.subheadline.weight(.medium))
+                                        .foregroundStyle(.white)
+                                    Text(SpeakerRecognizer.shared.isModelReady
+                                         ? "已就绪：\(SpeakerRecognizer.shared.enrolledSpeakers.joined(separator: "、"))"
+                                         : "未训练模型（用 tools/train_speaker.swift 训练）")
+                                        .font(OMFonts.caption2)
+                                        .foregroundStyle(.white.opacity(0.5))
+                                }
+                                Spacer()
+                            }
                         }
                     }
 

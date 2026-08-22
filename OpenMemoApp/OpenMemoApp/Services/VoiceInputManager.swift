@@ -45,6 +45,10 @@ final class VoiceInputManager {
 
     // ⚠️ 每会话状态：全部在 start 时新建、stop 时销毁。绝不跨会话复用。
     private var engine: AVAudioEngine?
+    /// 本会话录音文件（供说话人识别）；会话结束即生成，识别完可删除
+    private(set) var lastSessionAudioURL: URL?
+    private var sessionAudioFile: AVAudioFile?
+    private var sessionAudioFormat: AVAudioFormat?
     private let reqBox = RecognitionRequestBox()   // @unchecked Sendable：音频线程往里 append
     private var recognitionTask: SFSpeechRecognitionTask?
     private var silenceTimer: Timer?
@@ -115,6 +119,12 @@ final class VoiceInputManager {
             engine.inputNode.removeTap(onBus: 0)
         }
         engine = nil
+        // 说话人识别音频：关闭文件并保留 URL（供 SpeakerRecognizer 用）
+        if let sessionAudioFile {
+            lastSessionAudioURL = sessionAudioFile.url
+        }
+        sessionAudioFile = nil
+        sessionAudioFormat = nil
         isListening = false
         isTranscribing = false
         isWakeArmed = false
@@ -191,6 +201,38 @@ final class VoiceInputManager {
         // 在 nonisolated 静态方法里安装 tap：避免 Swift 6 "sending" 参数检查
         // （MainActor 上下文创建的闭包传给 sending 参数会报 data race）
         Self.installTap(on: engine, format: format, box: reqBox)
+
+        // 说话人识别：同一路麦克风再写一份 WAV（会话结束供 SpeakerRecognizer 推理）
+        do {
+            let tmp = FileManager.default.temporaryDirectory
+                .appendingPathComponent("session_audio_\(UUID().uuidString).wav")
+            let wavFormat = AVAudioFormat(standardFormatWithSampleRate: 16000, channels: 1)!
+            let wavFile = try AVAudioFile(forWriting: tmp, settings: wavFormat.settings)
+            sessionAudioFile = wavFile
+            sessionAudioFormat = wavFormat
+            // 用独立 tap 写文件（recognition tap 是 1024 buffer，这里用稍大 buffer 减负）
+            engine.inputNode.installTap(onBus: 0, bufferSize: 8192, format: format) {
+                [weak self] buffer, _ in
+                guard let self, let wavFile = self.sessionAudioFile,
+                      let wavFormat = self.sessionAudioFormat else { return }
+                let converter = AVAudioConverter(from: format, to: wavFormat)
+                let ratio = wavFormat.sampleRate / format.sampleRate
+                let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1024
+                guard let outBuf = AVAudioPCMBuffer(pcmFormat: wavFormat,
+                                                    frameCapacity: capacity) else { return }
+                var error: NSError?
+                let status = converter?.convert(to: outBuf, error: &error) { _, outStatus in
+                    outStatus.pointee = .haveData
+                    return buffer
+                }
+                if status == .haveData {
+                    try? wavFile.write(from: outBuf)
+                }
+            }
+        } catch {
+            print("[语音] 会话录音文件创建失败：\(error.localizedDescription)")
+            sessionAudioFile = nil
+        }
         engine.prepare()
 
         // ⚠️ Catalyst 上 start() 可能卡住 → 后台线程启动；

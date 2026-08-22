@@ -16,6 +16,14 @@ struct MessageBubbleNew: View {
             }
             
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
+                // 说话人标签（Apple 说话人识别；未识别则不显示）
+                if let speaker = message.speaker {
+                    Label(speaker, systemImage: "person.fill")
+                        .font(OMFonts.caption2.weight(.medium))
+                        .foregroundStyle(OMColors.success.opacity(0.9))
+                        .padding(.horizontal, 4)
+                }
+
                 // Message content
                 Text(message.text)
                     .font(OMFonts.body)

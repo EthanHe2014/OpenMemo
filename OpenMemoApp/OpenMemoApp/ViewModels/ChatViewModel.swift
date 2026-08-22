@@ -5,6 +5,8 @@ struct ChatMessage: Identifiable, Equatable {
     let id = UUID()
     let role: Role
     let text: String
+    /// 说话人（Apple 说话人识别：名字或 "说话人N"）；nil = 未识别
+    var speaker: String? = nil
 
     enum Role {
         case user, assistant
@@ -96,6 +98,18 @@ final class ChatViewModel {
     }
 
     // MARK: - 发送
+
+    /// 发送语音消息：文本 + 说话人识别结果（Apple 本地模型，nil=未识别）
+    func sendVoice(text: String, speaker: String?) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        inputText = trimmed
+        // 先记下要打的说话人，send() 里 append 后立刻补上
+        send()
+        if let speaker, let idx = messages.lastIndex(where: { $0.role == .user }) {
+            messages[idx].speaker = speaker
+        }
+    }
 
     func send() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)

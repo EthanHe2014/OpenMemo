@@ -20,6 +20,7 @@
 		326F0B580B73687B7CC66A1AF80954BF /* ChatViewNew.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20D0DB674F137FD952FDC378E6B758BD /* ChatViewNew.swift */; };
 		3410906D2CA7ADB43C946CE3AF556AFC /* MultilineTextField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 166DB576ED62CF488EDC1337493D4B6D /* MultilineTextField.swift */; };
 		45F73F01F8A786735B75F2EDBA3A67B3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 614F757EA85F66FC59F1938139F32337 /* Assets.xcassets */; };
+		46F7F6EC21AD3A1FA5B7AC4B513D9533 /* SpeakerRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 526487A3EC9ACDA94C3104178BCFF27D /* SpeakerRecognizer.swift */; };
 		507E0EC2E5A2E7856B4ED7F09D3C0DF1 /* SettingsViewNew.swift in Sources */ = {isa = PBXBuildFile; fileRef = C63CC19D40AE13B3DFAC04CC7F7D293E /* SettingsViewNew.swift */; };
 		5DB60EE70F64357E6474ECA8F04222B3 /* TaskListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6BB686A1F2274A64CA22FAA78160F46 /* TaskListViewModel.swift */; };
 		5EFE11A19AA90AD66B8CDC7CF86D417F /* TaskListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EA9D06452743221322319580ABAB234 /* TaskListView.swift */; };
@@ -44,6 +45,7 @@
 		C8242A933AF0BAC7A3653DAD73F91119 /* Task.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF3D1609A5DDE7A9D549FADA992615F0 /* Task.swift */; };
 		DA02BA6BB60124373031BCB6DE9A50CB /* AddTaskView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 857DA4318BB6EBB68DCB5D74A6E0D21E /* AddTaskView.swift */; };
 		DC00F7B67A1190C0060408F799BCBC0B /* VoiceInputManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 218B53B706FC5B1F1C28D8FB88928F9A /* VoiceInputManager.swift */; };
+		E0D59C89D4D959FFA288ADF1AFAE1A12 /* SpeakerRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 526487A3EC9ACDA94C3104178BCFF27D /* SpeakerRecognizer.swift */; };
 		E0D7EBE17E616415B68ECE1D0ADFE1B7 /* STTEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F91AAAFEB2B714FA0CA60207B565C2D /* STTEngine.swift */; };
 		E83ACC4A50B6585FF039741E2DCFA889 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 098144CE2258054407E8BF541C341C5E /* DesignSystem.swift */; };
 		E9CAA839B3F314F42ABDD36C5F9F0E7A /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13FA27488EB8D661C37BEAC94C868244 /* ChatViewModel.swift */; };
@@ -61,6 +63,7 @@
 		218B53B706FC5B1F1C28D8FB88928F9A /* VoiceInputManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceInputManager.swift; sourceTree = "<group>"; };
 		428BADDB32345CCA623D11F5F18D0E3C /* TaskDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDetailView.swift; sourceTree = "<group>"; };
 		524E53A89F8D859299CE9CF131352452 /* OpenMemoAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenMemoAPI.swift; sourceTree = "<group>"; };
+		526487A3EC9ACDA94C3104178BCFF27D /* SpeakerRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerRecognizer.swift; sourceTree = "<group>"; };
 		5F36CB9D529969A9E2B0518B76E56E51 /* OpenMemoApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OpenMemoApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		614F757EA85F66FC59F1938139F32337 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		624B64DB022817CDD1FB499944823EAB /* MessageComponentsNew.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageComponentsNew.swift; sourceTree = "<group>"; };
@@ -153,6 +156,7 @@
 			children = (
 				7D99BF3FDC9FE5FFB1FF87BE32623D27 /* LocalNotificationManager.swift */,
 				9D8E4A01CF460584C7C27DD37366160F /* LocalSTTProvider.swift */,
+				526487A3EC9ACDA94C3104178BCFF27D /* SpeakerRecognizer.swift */,
 				6F91AAAFEB2B714FA0CA60207B565C2D /* STTEngine.swift */,
 				218B53B706FC5B1F1C28D8FB88928F9A /* VoiceInputManager.swift */,
 			);
@@ -284,6 +288,7 @@
 				8FCAD48E11D66D3634484D576B1EB73E /* STTEngine.swift in Sources */,
 				ACFD02015216B0906D6D8197760EA888 /* SettingsView.swift in Sources */,
 				507E0EC2E5A2E7856B4ED7F09D3C0DF1 /* SettingsViewNew.swift in Sources */,
+				E0D59C89D4D959FFA288ADF1AFAE1A12 /* SpeakerRecognizer.swift in Sources */,
 				885A6C8C1714E34C44B570F1A04D9E5A /* Task.swift in Sources */,
 				F4FCEEB6CA74E28E725F909E3393CA98 /* TaskDetailView.swift in Sources */,
 				5EFE11A19AA90AD66B8CDC7CF86D417F /* TaskListView.swift in Sources */,
@@ -312,6 +317,7 @@
 				E0D7EBE17E616415B68ECE1D0ADFE1B7 /* STTEngine.swift in Sources */,
 				8872DF82DCDF9422A3C20D0C1D97371B /* SettingsView.swift in Sources */,
 				8A62543775A7EA60B375BFFCCAB2201A /* SettingsViewNew.swift in Sources */,
+				46F7F6EC21AD3A1FA5B7AC4B513D9533 /* SpeakerRecognizer.swift in Sources */,
 				C8242A933AF0BAC7A3653DAD73F91119 /* Task.swift in Sources */,
 				1B89D48544CBB972124D339B78B3A610 /* TaskDetailView.swift in Sources */,
 				057B58E38BB409CF64A9CC6594896FCE /* TaskListView.swift in Sources */,

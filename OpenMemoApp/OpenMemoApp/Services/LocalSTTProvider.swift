@@ -37,6 +37,7 @@ final class LocalSTTProvider: STTProvider {
     var isTranscribing: Bool = false
     var isWakeArmed: Bool = false
     var isListening: Bool = false
+    var lastSessionAudioURL: URL? { nil }   // 本地 STT 走服务器，暂无本地音频
 
     private var engine: AVAudioEngine?
     private var isStoppingForSubmit = false
