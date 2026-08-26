@@ -2,8 +2,7 @@ import SwiftUI
 
 struct ChatViewNew: View {
     @Environment(ChatViewModel.self) private var chatVM
-    // 统一 STT 层：自动检测平台（Apple→系统识别 / Android→系统识别 / 其它→本地）
-    @State private var voice: any STTProvider = STTEngine.shared
+    @State private var voice = VoiceInputManager()
     @State private var speechAuthGranted = false
     @State private var showSidebar = false
     
@@ -30,7 +29,7 @@ struct ChatViewNew: View {
                 inputSection
             }
             
-            // Sidebar overlay（与 Mac 一致：滑出侧栏）
+            // Sidebar overlay
             if showSidebar {
                 SidebarViewNew(onClose: {
                     withAnimation(OMAnimations.spring) {
@@ -42,32 +41,14 @@ struct ChatViewNew: View {
         }
         .task {
             await chatVM.startFresh()
-            voice.onMessageReady = { text in
-                chatVM.inputText = text
-                // 说话人识别（Apple 本地模型；无模型/失败时 speaker=nil 静默跳过）
-                let audioURL = voice.lastSessionAudioURL
-                if SpeakerRecognizer.shared.isModelReady, let audioURL {
-                    Task { @MainActor in
-                        let results = await SpeakerRecognizer.shared.identifySpeaker(audioURL: audioURL)
-                        let speaker = results.first.map { $0.0 }
-                        try? FileManager.default.removeItem(at: audioURL)
-                        chatVM.sendVoice(text: text, speaker: speaker)
-                    }
-                } else {
-                    chatVM.send()
-                }
+            voice.onMessageReady = { text, audioData in
+                chatVM.sendVoice(text: text, audioData: audioData)
             }
-            // 唤醒词开关（设置页持久化）：默认开，关了就不监听（与 Mac 一致）
-            let wakeEnabled = UserDefaults.standard.object(forKey: "wakeWordEnabled") as? Bool ?? true
-            if wakeEnabled {
-                if !speechAuthGranted {
-                    speechAuthGranted = await VoiceInputManager.requestAuthorization()
-                }
-                if speechAuthGranted {
-                    voice.setWakeMode(true)
-                }
-            } else {
-                voice.setWakeMode(false)
+            if !speechAuthGranted {
+                speechAuthGranted = await VoiceInputManager.requestAuthorization()
+            }
+            if speechAuthGranted {
+                voice.setWakeMode(true)
             }
         }
     }
@@ -95,24 +76,21 @@ struct ChatViewNew: View {
                     .font(OMFonts.title3)
                     .foregroundStyle(.white)
                 
-                // 唤醒词开关（设置页可关）→ 状态随开关变化
-                let wakeEnabled = UserDefaults.standard.object(forKey: "wakeWordEnabled") as? Bool ?? true
-                if wakeEnabled {
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(OMColors.success)
-                            .frame(width: 6, height: 6)
-                        Text("小麦小麦 待命")
-                            .font(OMFonts.caption2)
-                            .foregroundStyle(OMColors.success)
-                    }
+                // 唤醒词常开 → 状态常驻，不随 re-arm 闪烁
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(OMColors.success)
+                        .frame(width: 6, height: 6)
+                    Text("小麦小麦 待命")
+                        .font(OMFonts.caption2)
+                        .foregroundStyle(OMColors.success)
                 }
             }
             
             Spacer()
             
             Button {
-                chatVM.newSession()
+                Task { await chatVM.startFresh() }
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 20, weight: .semibold))
@@ -151,8 +129,6 @@ struct ChatViewNew: View {
                     }
                 }
                 .padding()
-                // 底部留白：内容不被输入栏/Home 指示条遮挡（iPhone 关键）
-                .padding(.bottom, 90)
             }
             .onChange(of: chatVM.messages.count) { _, _ in
                 scrollToBottom(scroll: scroll)
@@ -179,38 +155,25 @@ struct ChatViewNew: View {
         VStack(spacing: 28) {
             // Animated logo
             ZStack {
-                // 图标尺寸：Mac 保持原样，iPhone 缩小一档
-                #if targetEnvironment(macCatalyst)
-                let logoSize: CGFloat = 90
-                let ringBase: CGFloat = 100
-                let ringStep: CGFloat = 30
-                let sparkleSize: CGFloat = 40
-                #else
-                let logoSize: CGFloat = 80
-                let ringBase: CGFloat = 88
-                let ringStep: CGFloat = 26
-                let sparkleSize: CGFloat = 36
-                #endif
-                
                 // Outer glow rings
                 ForEach(0..<3) { i in
                     Circle()
                         .stroke(OMColors.primaryGradient, lineWidth: 1)
-                        .frame(width: ringBase + CGFloat(i) * ringStep, height: ringBase + CGFloat(i) * ringStep)
+                        .frame(width: 100 + CGFloat(i) * 30, height: 100 + CGFloat(i) * 30)
                         .opacity(0.3 - Double(i) * 0.1)
                         .scaleEffect(1 + Double(i) * 0.1)
                 }
                 
                 // Main logo
-                RoundedRectangle(cornerRadius: logoSize * 0.31, style: .continuous)
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
                     .fill(OMColors.primaryGradient)
-                    .frame(width: logoSize, height: logoSize)
+                    .frame(width: 90, height: 90)
                     .overlay(
                         Image(systemName: "sparkles")
-                            .font(.system(size: sparkleSize))
+                            .font(.system(size: 40))
                             .foregroundStyle(.white)
                     )
-                    .shadow(color: Color(hex: "FF6B6B").opacity(0.4), radius: logoSize * 0.33, x: 0, y: logoSize * 0.11)
+                    .shadow(color: Color(hex: "FF6B6B").opacity(0.4), radius: 30, x: 0, y: 10)
             }
             
             VStack(spacing: 8) {
@@ -263,16 +226,52 @@ struct ChatViewNew: View {
             inputBar
         }
         .frame(maxWidth: .infinity)
-        .background {
-            // 同一块材质背景直接延伸进底部安全区（Home 条下无缝，无灰色残条）
+        .background(
             OMColors.surface
                 .overlay(.ultraThinMaterial)
-                .ignoresSafeArea(edges: .bottom)
-        }
+        )
     }
     
     private var inputBar: some View {
         HStack(spacing: 10) {
+            // Speaker picker (only shown when speakers are enrolled)
+            if chatVM.speakerModelReady && !chatVM.availableSpeakers.isEmpty {
+                Menu {
+                    Button {
+                        chatVM.selectedSpeaker = nil
+                    } label: {
+                        HStack {
+                            Text("不识别")
+                            if chatVM.selectedSpeaker == nil { Image(systemName: "checkmark") }
+                        }
+                    }
+                    ForEach(chatVM.availableSpeakers, id: \.self) { name in
+                        Button {
+                            chatVM.selectedSpeaker = name
+                        } label: {
+                            HStack {
+                                Text(name)
+                                if chatVM.selectedSpeaker == name { Image(systemName: "checkmark") }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "person.crop.circle.fill")
+                            .font(.system(size: 14))
+                        Text(chatVM.selectedSpeaker ?? "说话人")
+                            .font(OMFonts.caption.weight(.medium))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 10))
+                    }
+                    .foregroundStyle(.white.opacity(0.7))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .glass(cornerRadius: 10)
+                }
+                .buttonStyle(.plain)
+            }
+
             // Voice button
             VoiceButton(
                 isRecording: voice.isTranscribing,
@@ -464,7 +463,7 @@ struct SendButton: View {
 }
 
 struct VoiceStatusBar: View {
-    let voice: any STTProvider
+    let voice: VoiceInputManager
     
     var body: some View {
         HStack(spacing: 10) {

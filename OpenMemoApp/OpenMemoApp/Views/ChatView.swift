@@ -45,9 +45,8 @@ struct ChatView: View {
         .task {
             await chatVM.startFresh()
             // 语音留言完成 → 填入输入框并发送
-            voice.onMessageReady = { text in
-                chatVM.inputText = text
-                chatVM.send()
+            voice.onMessageReady = { text, audioData in
+                chatVM.sendVoice(text: text, audioData: audioData)
             }
             // 「小麦小麦」唤醒：始终自动开启（无需任何按钮）
             if !speechAuthGranted {
@@ -200,6 +199,44 @@ struct ChatView: View {
 
             Divider()
             HStack(spacing: 8) {
+                // Speaker picker (only when speakers are enrolled)
+                if chatVM.speakerModelReady && !chatVM.availableSpeakers.isEmpty {
+                    Menu {
+                        Button {
+                            chatVM.selectedSpeaker = nil
+                        } label: {
+                            HStack {
+                                Text("不识别")
+                                if chatVM.selectedSpeaker == nil { Image(systemName: "checkmark") }
+                            }
+                        }
+                        ForEach(chatVM.availableSpeakers, id: \.self) { name in
+                            Button {
+                                chatVM.selectedSpeaker = name
+                            } label: {
+                                HStack {
+                                    Text(name)
+                                    if chatVM.selectedSpeaker == name { Image(systemName: "checkmark") }
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "person.crop.circle.fill")
+                                .font(.system(size: 14))
+                            Text(chatVM.selectedSpeaker ?? "说话人")
+                                .font(.caption.weight(.medium))
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 10))
+                        }
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color(.systemGray6))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                }
+
                 ZStack(alignment: .topLeading) {
                     MultilineTextField(
                         text: inputBinding,

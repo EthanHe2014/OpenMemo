@@ -226,9 +226,7 @@ struct TaskListViewNew: View {
     private var taskScrollView: some View {
         ScrollView {
             LazyVStack(spacing: 12) {
-                // 固定分组顺序：今天 → 明天 → 未来 → 待安排 → 已完成 → 已取消
-                let orderedKeys = ["今天", "明天", "未来", "待安排", "已完成", "已取消"]
-                ForEach(orderedKeys, id: \.self) { section in
+                ForEach(groupedTasks.keys.sorted(), id: \.self) { section in
                     if let tasks = groupedTasks[section], !tasks.isEmpty {
                         TaskSection(
                             title: section,
@@ -259,11 +257,9 @@ struct TaskListViewNew: View {
             return taskVM.tasks.filter { $0.isPending }
         case .today:
             return taskVM.tasks.filter { task in
-                guard task.isPending, let t = task.triggerTime,
+                guard let t = task.triggerTime,
                       let d = TaskListHelpers.parseTime(t) else { return false }
-                // 今天到期 + 已过期未完成都算"今日"
-                return Calendar.current.isDateInToday(d)
-                    || d < Calendar.current.startOfDay(for: Date())
+                return Calendar.current.isDateInToday(d) && task.isPending
             }
         case .completed:
             return taskVM.tasks.filter { $0.isCompleted }
@@ -276,9 +272,6 @@ struct TaskListViewNew: View {
             if task.isCancelled { return "已取消" }
             if let time = task.triggerTime,
                let date = TaskListHelpers.parseTime(time) {
-                // 过期未完成的任务（时间已过）也归入"今天"，不能漏到"未来"
-                let startOfToday = Calendar.current.startOfDay(for: Date())
-                if date < startOfToday { return "今天" }
                 if Calendar.current.isDateInToday(date) { return "今天" }
                 if Calendar.current.isDateInTomorrow(date) { return "明天" }
                 return "未来"
@@ -293,10 +286,9 @@ struct TaskListViewNew: View {
         case .pending: return taskVM.tasks.filter { $0.isPending }.count
         case .today:
             return taskVM.tasks.filter { task in
-                guard task.isPending, let t = task.triggerTime,
+                guard let t = task.triggerTime,
                       let d = TaskListHelpers.parseTime(t) else { return false }
-                return Calendar.current.isDateInToday(d)
-                    || d < Calendar.current.startOfDay(for: Date())
+                return Calendar.current.isDateInToday(d) && task.isPending
             }.count
         case .completed: return taskVM.tasks.filter { $0.isCompleted }.count
         }
@@ -305,10 +297,9 @@ struct TaskListViewNew: View {
     private func calculateStats() -> (pending: Int, today: Int, completed: Int, total: Int) {
         let pending = taskVM.tasks.filter { $0.isPending }.count
         let today = taskVM.tasks.filter { task in
-            guard task.isPending, let t = task.triggerTime,
+            guard let t = task.triggerTime,
                   let d = TaskListHelpers.parseTime(t) else { return false }
-            return Calendar.current.isDateInToday(d)
-                || d < Calendar.current.startOfDay(for: Date())
+            return Calendar.current.isDateInToday(d) && task.isPending
         }.count
         let completed = taskVM.tasks.filter { $0.isCompleted }.count
         return (pending, today, completed, taskVM.tasks.count)
@@ -422,7 +413,7 @@ struct TaskSection: View {
             .padding(.horizontal, 4)
             
             ForEach(tasks) { task in
-                TaskCard(task: task, onToggle: { onToggle(task) }, onDelete: { onDelete(task) })
+                TaskCard(task: task, onToggle: { onToggle(task) })
                     .contextMenu {
                         Button(role: .destructive) {
                             onDelete(task)
@@ -446,11 +437,13 @@ struct TaskSection: View {
 struct TaskCard: View {
     let task: OpenMemoTask
     let onToggle: () -> Void
-    let onDelete: () -> Void
+    
+    @State private var isPressed = false
     
     var body: some View {
-        HStack(spacing: 14) {
-            // ── 可点击切换区：状态 + 内容 + 勾选（点这里 = 完成/未完成）──
+        Button {
+            onToggle()
+        } label: {
             HStack(spacing: 14) {
                 // Status indicator
                 statusIndicator
@@ -479,30 +472,22 @@ struct TaskCard: View {
                 // Check button
                 checkButton
             }
-            .contentShape(Rectangle())
-            .onTapGesture { toggleOnce() }
-            
-            // ── 独立删除按钮：点击只删除，绝不触发切换 ──
-            deleteButton
+            .padding()
+            .glass(cornerRadius: 18)
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(borderColor, lineWidth: 1)
+            )
+            .hoverGlow()
         }
-        .padding()
-        .glass(cornerRadius: 18)
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(borderColor, lineWidth: 1)
+        .buttonStyle(.plain)
+        .scaleEffect(isPressed ? 0.98 : 1)
+        .animation(.easeInOut(duration: 0.15), value: isPressed)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in isPressed = true }
+                .onEnded { _ in isPressed = false }
         )
-        .hoverGlow()
-    }
-    
-    /// Catalyst 上 .onTapGesture 在含 Button 的层级里会偶发双触发，
-    /// 导致任务“完成→飞到底部→又切回来”。用时间窗口去抖，只认第一次。
-    @State private var lastToggleAt = Date.distantPast
-    
-    private func toggleOnce() {
-        let now = Date()
-        guard now.timeIntervalSince(lastToggleAt) > 0.35 else { return }
-        lastToggleAt = now
-        onToggle()
     }
     
     private var statusIndicator: some View {
@@ -563,10 +548,6 @@ struct TaskCard: View {
         }
     }
     
-    private var deleteButton: some View {
-        HoverableDeleteButton(onDelete: onDelete)
-    }
-    
     private var borderColor: Color {
         if task.isCompleted { return Color.white.opacity(0.05) }
         if isUrgent { return OMColors.error.opacity(0.3) }
@@ -601,33 +582,4 @@ struct TaskCard: View {
     TaskListViewNew()
         .environment(TaskListViewModel())
         .preferredColorScheme(.dark)
-}
-
-/// 垃圾桶按钮：悬停时图标变红 + 红色辉光 + 微放大
-struct HoverableDeleteButton: View {
-    let onDelete: () -> Void
-    var help: String = "删除任务"
-    @State private var isHovered = false
-    
-    var body: some View {
-        Button(action: onDelete) {
-            ZStack {
-                Circle()
-                    .fill(isHovered ? OMColors.error.opacity(0.22) : Color.white.opacity(0.08))
-                    .frame(width: 30, height: 30)
-                
-                Image(systemName: "trash")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(isHovered ? OMColors.error : .white.opacity(0.55))
-            }
-            .scaleEffect(isHovered ? 1.1 : 1)
-            .shadow(color: isHovered ? OMColors.error.opacity(0.6) : .clear, radius: isHovered ? 10 : 0)
-            .animation(.easeInOut(duration: 0.15), value: isHovered)
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            isHovered = hovering
-        }
-        .help(help)
-    }
 }

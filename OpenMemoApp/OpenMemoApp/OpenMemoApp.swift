@@ -10,8 +10,6 @@ struct OpenMemoApp: App {
             ContentView()
                 .environment(taskVM)
                 .environment(chatVM)
-                // 强制深色：UI 设计就是深色（与 Mac 版一致，避免 iPhone 浅色模式露馅）
-                .preferredColorScheme(.dark)
         }
     }
 }
@@ -21,21 +19,8 @@ struct ContentView: View {
     @State private var reminderBannerVisible = false
     @State private var alertBannerVisible = false
 
-    /// iPhone：整体缩小 10%（含布局与图标），用反缩放补偿尺寸避免边缘留白
-    private var content: some View {
-        #if targetEnvironment(macCatalyst)
-        MainContainerView()
-        #else
-        MainContainerView()
-            .scaleEffect(0.9)
-            .frame(width: UIScreen.main.bounds.width / 0.9,
-                   height: UIScreen.main.bounds.height / 0.9)
-            .dynamicTypeSize(.large)
-        #endif
-    }
-
     var body: some View {
-        content
+        MainContainerView()
         .task { // 先加载 + 启动轮询（不等权限弹窗，弹窗可能一直挂着）；权限申请并行进行
             taskVM.startPolling()
             await taskVM.load()

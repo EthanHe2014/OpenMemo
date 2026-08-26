@@ -16,14 +16,6 @@ struct MessageBubbleNew: View {
             }
             
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
-                // 说话人标签（Apple 说话人识别；未识别则不显示）
-                if let speaker = message.speaker {
-                    Label(speaker, systemImage: "person.fill")
-                        .font(OMFonts.caption2.weight(.medium))
-                        .foregroundStyle(OMColors.success.opacity(0.9))
-                        .padding(.horizontal, 4)
-                }
-
                 // Message content
                 Text(message.text)
                     .font(OMFonts.body)
@@ -172,9 +164,9 @@ struct SidebarViewNew: View {
     
     var body: some View {
         ZStack(alignment: .leading) {
-            // Backdrop：轻量遮罩（能看到后面的聊天内容，不再黑屏）
-            Color.black
-                .opacity(0.25)
+            // Backdrop
+            OMColors.background
+                .opacity(0.9)
                 .ignoresSafeArea()
                 .onTapGesture { close() }
             
@@ -189,8 +181,10 @@ struct SidebarViewNew: View {
                     Spacer()
                     
                     Button {
-                        chatVM.newSession()
-                        close()
+                        Task {
+                            await chatVM.startFresh()
+                            close()
+                        }
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "plus")
@@ -225,7 +219,7 @@ struct SidebarViewNew: View {
             .frame(width: 320)
             .frame(maxHeight: .infinity)
             .background(
-                OMColors.surface.opacity(0.85)
+                OMColors.surface
                     .overlay(.ultraThinMaterial)
             )
             .clipShape(RoundedRectangle(cornerRadius: 0))
@@ -289,15 +283,17 @@ struct SidebarViewNew: View {
     }
 }
 
+// MARK: - Session Row
 struct SessionRow: View {
     let session: ChatSession
     let isSelected: Bool
     let onSelect: () -> Void
     let onDelete: () -> Void
     
+    @State private var showingDelete = false
+    
     var body: some View {
-        HStack(spacing: 8) {
-            // ── 可点击选中区 ──
+        Button(action: onSelect) {
             HStack(spacing: 12) {
                 // Icon
                 ZStack {
@@ -332,23 +328,19 @@ struct SessionRow: View {
                         .foregroundStyle(OMColors.success)
                 }
             }
-            .contentShape(Rectangle())
-            .onTapGesture { onSelect() }
-            
-            // ── 独立删除按钮：点击只删除会话 ──
-            HoverableDeleteButton(onDelete: onDelete, help: "删除对话")
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(isSelected ? Color.white.opacity(0.1) : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(isSelected ? Color.white.opacity(0.2) : Color.clear, lineWidth: 1)
+            )
+            .hoverGlow()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(isSelected ? Color.white.opacity(0.1) : Color.clear)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(isSelected ? Color.white.opacity(0.2) : Color.clear, lineWidth: 1)
-        )
-        .hoverGlow()
+        .buttonStyle(.plain)
         .contextMenu {
             Button(role: .destructive, action: onDelete) {
                 Label("删除", systemImage: "trash")

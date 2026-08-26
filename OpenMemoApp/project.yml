@@ -36,28 +36,3 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         MARKETING_VERSION: 1.0.0
         CURRENT_PROJECT_VERSION: 1
-
-  # iPhone 专用目标：同一份源码，UI 按平台条件编译适配
-  OpenMemoAppPhone:
-    type: application
-    platform: iOS
-    sources:
-      - path: OpenMemoApp
-        excludes:
-          - Info.plist
-    settings:
-      base:
-        PRODUCT_NAME: OpenMemoiPhone
-        PRODUCT_BUNDLE_IDENTIFIER: com.openmemo.app.phone
-        PRODUCT_MODULE_NAME: OpenMemoAppPhone
-        INFOPLIST_FILE: OpenMemoApp/Info.plist
-        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        SWIFT_APPROACHABLE_CONCURRENCY: YES
-        ENABLE_PREVIEWS: YES
-        GENERATE_INFOPLIST_FILE: NO
-        TARGETED_DEVICE_FAMILY: "1"      # 仅 iPhone
-        SUPPORTS_MACCATALYST: NO          # 非 Catalyst
-        SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
-        MARKETING_VERSION: 1.0.0
-        CURRENT_PROJECT_VERSION: 1

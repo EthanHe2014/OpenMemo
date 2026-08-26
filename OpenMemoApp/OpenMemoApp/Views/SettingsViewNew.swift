@@ -2,7 +2,6 @@ import SwiftUI
 
 // MARK: - Settings View New
 struct SettingsViewNew: View {
-    @AppStorage("serverURL") private var storedServerURL = "http://127.0.0.1:18890"
     @State private var serverURL: String
     @State private var saved = false
     @State private var isConnected: Bool? = nil
@@ -11,12 +10,12 @@ struct SettingsViewNew: View {
     @State private var healthStatus: String? = nil
     @AppStorage("wakeWordEnabled") private var wakeWordEnabled = true
     @State private var showingClearConfirmation = false
+    @State private var showEnrollment = false
+    @State private var speakerModelReady = false
+    @State private var speakerNames: [String] = []
 
     init() {
-        // 启动时把持久化的地址应用到 API 客户端
-        let stored = UserDefaults.standard.string(forKey: "serverURL") ?? "http://127.0.0.1:18890"
-        OpenMemoAPI.shared.baseURL = stored
-        _serverURL = State(initialValue: stored)
+        _serverURL = State(initialValue: OpenMemoAPI.shared.baseURL)
     }
 
     var body: some View {
@@ -106,80 +105,64 @@ struct SettingsViewNew: View {
 
                     // Voice section
                     settingsSection(title: "语音") {
-                        VStack(spacing: 14) {
-                            Toggle(isOn: $wakeWordEnabled) {
-                                HStack(spacing: 12) {
-                                    ZStack {
-                                        Circle()
-                                            .fill(OMColors.success.opacity(0.2))
-                                            .frame(width: 36, height: 36)
-                                        Image(systemName: "ear")
+                        Toggle(isOn: $wakeWordEnabled) {
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    Circle()
+                                        .fill(OMColors.success.opacity(0.2))
+                                        .frame(width: 36, height: 36)
+                                    Image(systemName: "ear")
+                                        .font(.system(size: 16))
+                                        .foregroundStyle(OMColors.success)
+                                }
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("「小麦小麦」唤醒")
+                                        .font(OMFonts.subheadline.weight(.medium))
+                                        .foregroundStyle(.white)
+                                    Text("说出唤醒词即可开始对话")
+                                        .font(OMFonts.caption2)
+                                        .foregroundStyle(.white.opacity(0.5))
+                                }
+                            }
+                        }
+                        .tint(OMColors.success)
+                    }
+
+                    // Speaker Identification Section
+                    settingsSection(title: "说话人识别") {
+                        VStack(spacing: 12) {
+                            HStack {
+                                Circle()
+                                    .fill(speakerModelReady ? OMColors.success.opacity(0.2) : OMColors.error.opacity(0.2))
+                                    .frame(width: 36, height: 36)
+                                    .overlay {
+                                        Image(systemName: speakerModelReady ? "person.checkmark" : "person.crop.circle.badge.questionmark")
                                             .font(.system(size: 16))
-                                            .foregroundStyle(OMColors.success)
+                                            .foregroundStyle(speakerModelReady ? OMColors.success : OMColors.error)
                                     }
-
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("「小麦小麦」唤醒")
-                                            .font(OMFonts.subheadline.weight(.medium))
-                                            .foregroundStyle(.white)
-                                        Text("说出唤醒词即可开始对话")
-                                            .font(OMFonts.caption2)
-                                            .foregroundStyle(.white.opacity(0.5))
-                                    }
-                                }
-                            }
-                            .tint(OMColors.success)
-
-                            Divider()
-                                .background(Color.white.opacity(0.1))
-
-                            // 自动检测的 STT 引擎（跨平台：Apple/Android/本地）
-                            HStack(spacing: 12) {
-                                ZStack {
-                                    Circle()
-                                        .fill(OMColors.info.opacity(0.2))
-                                        .frame(width: 36, height: 36)
-                                    Image(systemName: "waveform")
-                                        .font(.system(size: 16))
-                                        .foregroundStyle(OMColors.info)
-                                }
 
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("语音识别引擎")
+                                    Text(speakerModelReady ? "已就绪" : "未就绪")
                                         .font(OMFonts.subheadline.weight(.medium))
                                         .foregroundStyle(.white)
-                                    Text("自动检测：\(STTEngine.currentPlatform.rawValue)")
+                                    Text(speakerModelReady ? "可识别: \(speakerNames.joined(separator: ", "))" : "请先训练模型")
                                         .font(OMFonts.caption2)
                                         .foregroundStyle(.white.opacity(0.5))
                                 }
                                 Spacer()
-                            }
 
-                            Divider()
-                                .background(Color.white.opacity(0.1))
-
-                            // 说话人识别（Apple 原生：Create ML + SoundAnalysis）
-                            HStack(spacing: 12) {
-                                ZStack {
-                                    Circle()
-                                        .fill(OMColors.info.opacity(0.2))
-                                        .frame(width: 36, height: 36)
-                                    Image(systemName: "person.wave.2")
-                                        .font(.system(size: 16))
-                                        .foregroundStyle(OMColors.info)
-                                }
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("说话人识别")
+                                Button {
+                                    showEnrollment = true
+                                } label: {
+                                    Text("管理")
                                         .font(OMFonts.subheadline.weight(.medium))
                                         .foregroundStyle(.white)
-                                    Text(SpeakerRecognizer.shared.isModelReady
-                                         ? "已就绪：\(SpeakerRecognizer.shared.enrolledSpeakers.joined(separator: "、"))"
-                                         : "未训练模型（用 tools/train_speaker.swift 训练）")
-                                        .font(OMFonts.caption2)
-                                        .foregroundStyle(.white.opacity(0.5))
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 8)
+                                        .glass(cornerRadius: 8)
                                 }
-                                Spacer()
+                                .buttonStyle(.plain)
                             }
                         }
                     }
@@ -247,14 +230,24 @@ struct SettingsViewNew: View {
         .alert("确认清除", isPresented: $showingClearConfirmation) {
             Button("取消", role: .cancel) {}
             Button("清除", role: .destructive) {
-                clearAllData()
+                // Clear data logic
             }
         } message: {
-            Text("这将删除所有任务，此操作不可撤销。")
+            Text("这将删除所有本地数据，此操作不可撤销。")
+        }
+        .sheet(isPresented: $showEnrollment) {
+            SpeakerEnrollmentView()
         }
         .task {
             check()
+            refreshSpeakerCache()
         }
+    }
+
+    private func refreshSpeakerCache() {
+        let sr = SpeakerRecognizer.shared
+        speakerModelReady = sr.isModelReady
+        speakerNames = sr.enrolledSpeakers
     }
 
     // MARK: - 服务器操作
@@ -264,25 +257,8 @@ struct SettingsViewNew: View {
         let trimmed = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         OpenMemoAPI.shared.baseURL = trimmed
-        storedServerURL = trimmed          // 持久化，下次启动自动应用
         saved = true
         check()
-    }
-
-    /// 清除所有数据：遍历删除服务端全部任务。
-    private func clearAllData() {
-        let api = OpenMemoAPI.shared
-        Task {
-            do {
-                let resp = try await api.listTasks()
-                for task in resp.tasks {
-                    _ = try? await api.deleteTask(task.taskId)
-                }
-                healthStatus = "已清除 \(resp.tasks.count) 个任务"
-            } catch {
-                healthStatus = "清除失败：\(error.localizedDescription)"
-            }
-        }
     }
 
     private func check() {

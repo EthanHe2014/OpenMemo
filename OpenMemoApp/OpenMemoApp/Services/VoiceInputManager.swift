@@ -28,6 +28,40 @@ final class AudioEngineBox: @unchecked Sendable {
     init(_ engine: AVAudioEngine) { self.engine = engine }
 }
 
+/// Captures raw audio buffers for speaker identification (written to disk by VoiceInputManager)
+final class SpeakerAudioCaptureBox: @unchecked Sendable {
+    private let queue = DispatchQueue(label: "com.openmemo.speaker.capture")
+    private var buffers: [AVAudioPCMBuffer] = []
+    private let format: AVAudioFormat?
+
+    init(format: AVAudioFormat?) { self.format = format }
+
+    func append(_ buffer: AVAudioPCMBuffer) {
+        queue.async { self.buffers.append(buffer) }
+    }
+
+    /// Export captured audio to a temporary WAV file, then return its data.
+    func exportToData() -> Data? {
+        var result: Data?
+        queue.sync {
+            guard !self.buffers.isEmpty, let format else { return }
+            // Write all buffers into an in-memory WAV via a temp file
+            let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("speaker_cap_\(UUID().uuidString).wav")
+            guard let file = try? AVAudioFile(forWriting: tmp, settings: format.settings) else { return }
+            for buf in self.buffers {
+                try? file.write(from: buf)
+            }
+            result = try? Data(contentsOf: tmp)
+            try? FileManager.default.removeItem(at: tmp)
+        }
+        return result
+    }
+
+    func clear() {
+        queue.async { self.buffers.removeAll() }
+    }
+}
+
 @MainActor
 @Observable
 final class VoiceInputManager {
@@ -38,17 +72,13 @@ final class VoiceInputManager {
     var liveText = ""             // 实时转写文本（输入框用）
 
     /// 回调
-    var onMessageReady: ((String) -> Void)?   // 留言结束（静音2秒）→ 提交
+    var onMessageReady: ((String, Data?) -> Void)?   // 留言结束（静音2秒）→ 提交（text + captured audio）
 
     private let recognizer: SFSpeechRecognizer? =
         SFSpeechRecognizer(locale: Locale(identifier: "zh-CN"))
 
     // ⚠️ 每会话状态：全部在 start 时新建、stop 时销毁。绝不跨会话复用。
     private var engine: AVAudioEngine?
-    /// 本会话录音文件（供说话人识别）；会话结束即生成，识别完可删除
-    private(set) var lastSessionAudioURL: URL?
-    private var sessionAudioFile: AVAudioFile?
-    private var sessionAudioFormat: AVAudioFormat?
     private let reqBox = RecognitionRequestBox()   // @unchecked Sendable：音频线程往里 append
     private var recognitionTask: SFSpeechRecognitionTask?
     private var silenceTimer: Timer?
@@ -59,7 +89,8 @@ final class VoiceInputManager {
     private var isRearming = false       // 防重入：stop 后自动重新挂起唤醒监听
     private var rearmToken = 0           // 唤醒接管时作废所有待执行的自动重挂
     private var currentSessionEpoch = 0  // 会话代数：旧会话的迟到回调不得影响新会话
-    private var stripAckUntil: Date?     // 留言会话初期：剥离服务器应答"我在"被麦克风拾取的残余
+    private var stripAckUntil: Date?     // 留言会话初期：剥离服务器应答“我在”被麦克风拾取的残余
+    private var speakerCapture: SpeakerAudioCaptureBox?  // 捕获原始音频用于说话人识别
 
     // MARK: - 权限
 
@@ -119,12 +150,7 @@ final class VoiceInputManager {
             engine.inputNode.removeTap(onBus: 0)
         }
         engine = nil
-        // 说话人识别音频：关闭文件并保留 URL（供 SpeakerRecognizer 用）
-        if let sessionAudioFile {
-            lastSessionAudioURL = sessionAudioFile.url
-        }
-        sessionAudioFile = nil
-        sessionAudioFormat = nil
+        speakerCapture = nil
         isListening = false
         isTranscribing = false
         isWakeArmed = false
@@ -197,42 +223,14 @@ final class VoiceInputManager {
             return
         }
 
-        // ⚠️ 正确写法：@Sendable 修饰整个闭包（音频线程可安全调用）；
-        // 在 nonisolated 静态方法里安装 tap：避免 Swift 6 "sending" 参数检查
-        // （MainActor 上下文创建的闭包传给 sending 参数会报 data race）
-        Self.installTap(on: engine, format: format, box: reqBox)
+        // Create speaker audio capture box (captures raw buffers for speaker ID)
+        let capBox = SpeakerAudioCaptureBox(format: format)
+        self.speakerCapture = capBox
 
-        // 说话人识别：同一路麦克风再写一份 WAV（会话结束供 SpeakerRecognizer 推理）
-        do {
-            let tmp = FileManager.default.temporaryDirectory
-                .appendingPathComponent("session_audio_\(UUID().uuidString).wav")
-            let wavFormat = AVAudioFormat(standardFormatWithSampleRate: 16000, channels: 1)!
-            let wavFile = try AVAudioFile(forWriting: tmp, settings: wavFormat.settings)
-            sessionAudioFile = wavFile
-            sessionAudioFormat = wavFormat
-            // 用独立 tap 写文件（recognition tap 是 1024 buffer，这里用稍大 buffer 减负）
-            engine.inputNode.installTap(onBus: 0, bufferSize: 8192, format: format) {
-                [weak self] buffer, _ in
-                guard let self, let wavFile = self.sessionAudioFile,
-                      let wavFormat = self.sessionAudioFormat else { return }
-                let converter = AVAudioConverter(from: format, to: wavFormat)
-                let ratio = wavFormat.sampleRate / format.sampleRate
-                let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1024
-                guard let outBuf = AVAudioPCMBuffer(pcmFormat: wavFormat,
-                                                    frameCapacity: capacity) else { return }
-                var error: NSError?
-                let status = converter?.convert(to: outBuf, error: &error) { _, outStatus in
-                    outStatus.pointee = .haveData
-                    return buffer
-                }
-                if status == .haveData {
-                    try? wavFile.write(from: outBuf)
-                }
-            }
-        } catch {
-            print("[语音] 会话录音文件创建失败：\(error.localizedDescription)")
-            sessionAudioFile = nil
-        }
+        // ⚠️ 正确写法：@Sendable 修饰整个闭包（音频线程可安全调用）；
+        // 在 nonisolated 静态方法里安装 tap：避免 Swift 6 “sending” 参数检查
+        // （MainActor 上下文创建的闭包传给 sending 参数会报 data race）
+        Self.installTap(on: engine, format: format, box: reqBox, captureBox: capBox)
         engine.prepare()
 
         // ⚠️ Catalyst 上 start() 可能卡住 → 后台线程启动；
@@ -255,9 +253,10 @@ final class VoiceInputManager {
     }
 
     /// nonisolated：闭包在非隔离上下文创建，音频实时线程直接调用
-    nonisolated private static func installTap(on engine: AVAudioEngine, format: AVAudioFormat, box: RecognitionRequestBox) {
+    nonisolated private static func installTap(on engine: AVAudioEngine, format: AVAudioFormat, box: RecognitionRequestBox, captureBox: SpeakerAudioCaptureBox?) {
         engine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
             box.request?.append(buffer)
+            captureBox?.append(buffer)
         }
     }
 
@@ -345,10 +344,12 @@ final class VoiceInputManager {
         let idle = Date().timeIntervalSince(lastTextTime)
         if idle >= 2.5 {
             let finalText = liveText.trimmingCharacters(in: .whitespacesAndNewlines)
+            // Capture audio data before stopping (stop clears speakerCapture)
+            let audioData = speakerCapture?.exportToData()
             // 先彻底销毁会话，再回调提交（避免重复触发）
             stop()
             if !finalText.isEmpty {
-                onMessageReady?(finalText)
+                onMessageReady?(finalText, audioData)
             }
         }
     }

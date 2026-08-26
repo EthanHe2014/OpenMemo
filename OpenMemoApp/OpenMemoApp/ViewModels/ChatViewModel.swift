@@ -5,8 +5,6 @@ struct ChatMessage: Identifiable, Equatable {
     let id = UUID()
     let role: Role
     let text: String
-    /// 说话人（Apple 说话人识别：名字或 "说话人N"）；nil = 未识别
-    var speaker: String? = nil
 
     enum Role {
         case user, assistant
@@ -76,6 +74,40 @@ final class ChatViewModel {
         }
     }
 
+    /// Send voice message with optional speaker identification
+    func sendVoice(text: String, audioData: Data?) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !isSending else { return }
+
+        if currentSessionId.isEmpty {
+            currentSessionId = "ios_" + UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "")
+        }
+        if messages.isEmpty {
+            currentTitle = String(trimmed.prefix(30))
+        }
+
+        var userText = trimmed
+        if let speaker = selectedSpeaker {
+            userText = "[\(speaker)] \(trimmed)"
+        }
+
+        messages.append(ChatMessage(role: .user, text: userText))
+        isSending = true
+        errorMessage = nil
+
+        let sessionId = currentSessionId
+        Task {
+            defer { isSending = false }
+            do {
+                let reply = try await api.chat(message: userText, sessionId: sessionId)
+                self.messages.append(ChatMessage(role: .assistant, text: reply))
+                await self.refreshSessions()
+            } catch {
+                self.messages.append(ChatMessage(role: .assistant, text: "连接失败：\(error.localizedDescription)"))
+            }
+        }
+    }
+
     private func loadHistory(sessionId: String) async {
         isLoading = true
         defer { isLoading = false }
@@ -97,19 +129,15 @@ final class ChatViewModel {
         }
     }
 
-    // MARK: - 发送
+    // MARK: - Speaker Detection
+    /// Currently selected speaker name (nil = no speaker identification)
+    var selectedSpeaker: String? = nil
+    /// Available speaker names loaded from SpeakerRecognizer
+    var availableSpeakers: [String] { SpeakerRecognizer.shared.enrolledSpeakers }
+    /// Whether speaker model is ready
+    var speakerModelReady: Bool { SpeakerRecognizer.shared.isModelReady }
 
-    /// 发送语音消息：文本 + 说话人识别结果（Apple 本地模型，nil=未识别）
-    func sendVoice(text: String, speaker: String?) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        inputText = trimmed
-        // 先记下要打的说话人，send() 里 append 后立刻补上
-        send()
-        if let speaker, let idx = messages.lastIndex(where: { $0.role == .user }) {
-            messages[idx].speaker = speaker
-        }
-    }
+    // MARK: - 发送
 
     func send() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -134,13 +162,10 @@ final class ChatViewModel {
             defer { isSending = false }
             do {
                 let reply = try await api.chat(message: text, sessionId: sessionId)
-                // 只把回复追加到发送时所在的会话；若用户已切走则丢弃，避免串会话
-                guard self.currentSessionId == sessionId else { return }
                 self.messages.append(ChatMessage(role: .assistant, text: reply))
                 // 保持侧边栏最新，让新建/更新的会话出现在顶部。
                 await self.refreshSessions()
             } catch {
-                guard self.currentSessionId == sessionId else { return }
                 self.messages.append(ChatMessage(role: .assistant, text: "连接失败：\(error.localizedDescription)"))
             }
         }

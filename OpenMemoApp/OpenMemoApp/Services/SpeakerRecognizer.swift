@@ -1,209 +1,208 @@
 import Foundation
 import AVFoundation
 import SoundAnalysis
+import CreateML
 
-// MARK: - 说话人识别（Apple 原生：Create ML + SoundAnalysis）
-//
-// Apple 的 Speech 框架（SFSpeechRecognizer / SpeechAnalyzer）没有公开的
-// 说话人识别 API。最接近的 Apple 原生方案：
-//   1. 用 Create ML 训练「声音分类器」（每个人 = 一个类别）
-//   2. App 内用 SoundAnalysis 的 SNClassifySoundRequest(mlModel:) 推理
-//
-// 本服务负责：
-//   - 录音采样（麦克风 → AAC 文件，供训练/推理）
-//   - 对一段音频做说话人推理（返回 [名字, 置信度]）
-//   - 管理已登记说话人（名字 + 若干采样音频）
-//
-// 训练流程（在 Mac 上用 Create ML / 脚本完成，见 tools/train_speaker.py）：
-//   收集每个人 ~30s 音频 → 训练 → 导出 SpeakerModel.mlmodel → 放进 App
+/// Speaker recognition service using Apple's SoundAnalysis framework.
+/// Reads speaker models written by tools/train_speaker.swift
+/// Detects who is speaking in an audio file and returns results with confidence scores.
+///
+/// This service provides speaker identification functionality for OpenMemo.
+/// The main use case is identifying who is speaking in voice messages.
+///
+/// Usage:
+///   1. Train a model using tools/train_speaker.swift (creates SpeakerModel.mlmodel)
+///   2. Copy SpeakerModel.mlmodel to the OpenMemo app bundle
+///   3. SpeakerRecognizer.shared.isModelReady becomes true
+///   4. Use identifySpeaker(audioURL:) to identify who is speaking
 
+/// Speaker identification service using Apple's SoundAnalysis framework
 @MainActor
-final class SpeakerRecognizer: NSObject, ObservableObject {
+final class SpeakerRecognizer: NSObject, SNResultsObserving {
     static let shared = SpeakerRecognizer()
-
-    // 已登记说话人（UserDefaults 持久化名字列表）
-    @Published var enrolledSpeakers: [String] = []
-    /// 模型是否存在且可用
-    @Published var isModelReady = false
-
-    private var model: MLModel?
-
-    // 推理状态
-    private var analyzer: SNAudioFileAnalyzer?
-    private var pendingResults: [(String, Double)] = []
-    private var inferenceContinuation: CheckedContinuation<[(String, Double)], Error>?
-
-    // 录音（采样用）
-    private var audioEngine: AVAudioEngine?
-    private var audioFile: AVAudioFile?
-    private var isRecording = false
-    private var recordingURL: URL?
-
-    override init() {
+    
+    /// Speaker identification model ready flag
+    var isModelReady: Bool { mlModel != nil }
+    
+    /// List of enrolled speakers
+    var enrolledSpeakers: [String] = []
+    
+    /// Audio file sample rate (Hz)
+    private let sampleRate: Double = 16000
+    
+    /// Channel count
+    private let channelCount: Int = 1
+    
+    /// Trained speaker model
+    private var mlModel: MLModel?
+    
+    /// Sound analysis request
+    private var classificationRequest: SNClassifySoundRequest?
+    
+    /// Temporary result storage
+    private var lastResult: (speaker: String, confidence: Double)?
+    
+    /// Flag for completion
+    private var isComplete = false
+    
+    private override init() {
         super.init()
-        loadEnrolledSpeakers()
         loadModel()
+        loadEnrolledSpeakers()
     }
-
-    // MARK: - 模型加载
-
-    /// 从 App bundle 加载 SpeakerModel.mlmodel（训练好后放入）
+    
+    // MARK: - Model Management
+    
+    /// Load SpeakerModel.mlmodel from app bundle
     private func loadModel() {
-        guard let url = Bundle.main.url(forResource: "SpeakerModel", withExtension: "mlmodelc") ??
-                        Bundle.main.url(forResource: "SpeakerModel", withExtension: "mlmodel") else {
-            print("[说话人] 未找到 SpeakerModel（尚未训练）")
-            isModelReady = false
+        guard let modelURL = Bundle.main.url(forResource: "SpeakerModel", withExtension: "mlmodel"),
+              let model = try? MLModel(contentsOf: modelURL) else {
+            print("⚠️ SpeakerModel.mlmodel not found")
             return
         }
-        do {
-            model = try MLModel(contentsOf: url)
-            isModelReady = true
-            print("[说话人] 模型加载成功")
-        } catch {
-            print("[说话人] 模型加载失败: \(error)")
-            isModelReady = false
+        
+        mlModel = model
+        
+        // Create sound classification request
+        classificationRequest = try? SNClassifySoundRequest(mlModel: model)
+        
+        print("✅ SpeakerRecognizer: Model loaded")
+    }
+    
+    /// Load enrolled speakers from UserDefaults
+    private func loadEnrolledSpeakers() {
+        if let saved = UserDefaults.standard.array(forKey: "enrolledSpeakers") as? [String] {
+            enrolledSpeakers = saved
+            print("📋 SpeakerRecognizer: Loaded \(enrolledSpeakers.count) speakers")
         }
     }
-
-    private func loadEnrolledSpeakers() {
-        enrolledSpeakers = UserDefaults.standard.stringArray(forKey: "speaker_names") ?? []
+    
+    /// Save enrolled speakers to UserDefaults
+    private func saveEnrolledSpeakers() {
+        UserDefaults.standard.set(enrolledSpeakers, forKey: "enrolledSpeakers")
+        UserDefaults.standard.set(isModelReady, forKey: "speakerModelReady")
     }
-
-    func saveEnrolledSpeakers() {
-        UserDefaults.standard.set(enrolledSpeakers, forKey: "speaker_names")
+    
+    // MARK: - Recording Samples (for training)
+    
+    func startRecordingSample(forSpeaker name: String) async -> Bool {
+        let fm = FileManager.default
+        guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return false }
+        
+        // Create speaker directory
+        let speakerDir = docs.appendingPathComponent("speaker_samples/\(name)", isDirectory: true)
+        try? fm.createDirectory(at: speakerDir, withIntermediateDirectories: true)
+        
+        // Generate filename
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+            .replacingOccurrences(of: ":", with: "-")
+        let filename = "\(timestamp).m4a"
+        let fileURL = speakerDir.appendingPathComponent(filename)
+        
+        // Start recording
+        let engine = AVAudioEngine()
+        let format = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: sampleRate,
+            channels: AVAudioChannelCount(channelCount),
+            interleaved: false
+        )!
+        
+        let recorder = try! AVAudioFile(forWriting: fileURL, settings: format.settings)
+        
+        engine.inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in
+            try? recorder.write(from: buffer)
+        }
+        
+        try! engine.start()
+        
+        // Wait 3 seconds to collect sample
+        try! await Task.sleep(nanoseconds: 3_000_000_000)
+        
+        engine.stop()
+        engine.inputNode.removeTap(onBus: 0)
+        
+        // Update speaker list
+        if !enrolledSpeakers.contains(name) {
+            enrolledSpeakers.append(name)
+            saveEnrolledSpeakers()
+        }
+        
+        print("✅ Sample saved: \(fileURL.path)")
+        return true
     }
-
-    // MARK: - 说话人推理
-
-    /// 对一段音频文件做说话人识别。
-    /// 返回 [(说话人, 置信度)]，按置信度降序；模型不可用时返回空。
+    
+    // MARK: - Speaker Identification
+    
+    /// Identify speaker in audio file
     func identifySpeaker(audioURL: URL) async -> [(String, Double)] {
-        guard isModelReady, let model else { return [] }
-
+        guard let mlModel = mlModel else {
+            print("⚠️ SpeakerRecognizer: Model not ready")
+            return []
+        }
+        
+        guard let classificationRequest = classificationRequest else {
+            print("⚠️ SpeakerRecognizer: Classification request not available")
+            return []
+        }
+        
         do {
-            let request = try SNClassifySoundRequest(mlModel: model)
-            request.windowDuration = CMTime(seconds: 1.0, preferredTimescale: 100)
-            request.overlapFactor = 0.5
-
-            let analyzer = try SNAudioFileAnalyzer(url: audioURL)
-            self.analyzer = analyzer
-            try analyzer.add(request, withObserver: self)
-
-            return try await withCheckedThrowingContinuation { continuation in
-                self.inferenceContinuation = continuation
-                self.pendingResults = []
-                do {
-                    try analyzer.analyze()
-                } catch {
-                    continuation.resume(throwing: error)
-                }
+            let fileRequest = try SNAudioFileAnalyzer(url: audioURL)
+            
+            // Reset state
+            lastResult = nil
+            isComplete = false
+            
+            // Add observer (self is the SNResultsObserving)
+            try fileRequest.add(classificationRequest, withObserver: self)
+            
+            // Start analysis
+            try await fileRequest.analyze()
+            
+            // Wait for completion (max 5 seconds)
+            let timeout = Date().addingTimeInterval(5)
+            while !isComplete && Date() < timeout {
+                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
             }
+            
+            fileRequest.cancelAnalysis()
+            
+            // Return results
+            if let result = lastResult {
+                return [(result.speaker, result.confidence)]
+            }
+            return []
+            
         } catch {
-            print("[说话人] 推理失败: \(error)")
+            print("❌ SpeakerRecognizer: Analysis failed - \(error)")
             return []
         }
     }
-
-    // MARK: - 录音采样（登记说话人 / 收集训练数据）
-
-    /// 开始录音采样（存成 m4a，用于登记/训练）
-    func startRecordingSample(forSpeaker name: String) async -> Bool {
-        guard !isRecording else { return false }
-        let session = AVAudioSession.sharedInstance()
-        do {
-            try session.setCategory(.record, mode: .measurement)
-            try session.setActive(true)
-        } catch {
-            print("[说话人] 音频会话失败: \(error)")
-            return false
-        }
-
-        let engine = AVAudioEngine()
-        let input = engine.inputNode
-        let format = input.outputFormat(forBus: 0)
-
-        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("speaker_samples", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-
-        let filename = "\(name)_\(Int(Date().timeIntervalSince1970)).m4a"
-        let url = dir.appendingPathComponent(filename)
-        recordingURL = url
-
-        do {
-            let file = try AVAudioFile(forWriting: url, settings: [
-                AVFormatIDKey: kAudioFormatMPEG4AAC,
-                AVSampleRateKey: 44100,
-                AVNumberOfChannelsKey: 1,
-                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
-            ])
-            input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
-                guard let self, let audioFile = self.audioFile else { return }
-                // 转成文件格式再写
-                if let converter = AVAudioConverter(from: format, to: file.processingFormat) {
-                    let ratio = file.processingFormat.sampleRate / format.sampleRate
-                    let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1024
-                    if let outBuf = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: capacity) {
-                        var error: NSError?
-                        let status = converter.convert(to: outBuf, error: &error) { _, outStatus in
-                            outStatus.pointee = .haveData
-                            return buffer
-                        }
-                        if status == .haveData {
-                            try? file.write(from: outBuf)
-                        }
-                    }
-                }
-            }
-            audioFile = file
-            try engine.start()
-            self.audioEngine = engine
-            isRecording = true
-            return true
-        } catch {
-            print("[说话人] 录音启动失败: \(error)")
-            return false
+    
+    // MARK: - SNResultsObserving
+    
+    nonisolated func request(_ request: SNRequest, didProduce result: SNResult) {
+        guard let classification = result as? SNClassificationResult,
+              let top = classification.classifications.first else { return }
+        
+        // Copy Sendable values out of isolation before sending to MainActor
+        let speaker = top.identifier
+        let confidence = top.confidence
+        Task { @MainActor in
+            self.lastResult = (speaker, confidence)
         }
     }
-
-    /// 停止录音采样，返回保存的文件 URL
-    func stopRecordingSample() -> URL? {
-        guard isRecording else { return nil }
-        isRecording = false
-        audioEngine?.stop()
-        audioEngine?.inputNode.removeTap(onBus: 0)
-        audioEngine = nil
-        audioFile = nil
-        let url = recordingURL
-        recordingURL = nil
-        return url
-    }
-}
-
-// MARK: - SNResultsObserving
-extension SpeakerRecognizer: SNResultsObserving {
-    func request(_ request: SNRequest, didProduce result: SNResult) {
-        guard let result = result as? SNClassificationResult else { return }
-        // 聚合每个窗口的分类
-        for classification in result.classifications {
-            let label = classification.identifier
-            let confidence = classification.confidence
-            if let idx = pendingResults.firstIndex(where: { $0.0 == label }) {
-                pendingResults[idx].1 = max(pendingResults[idx].1, confidence)
-            } else {
-                pendingResults.append((label, confidence))
-            }
+    
+    nonisolated func request(_ request: SNRequest, didFailWithError error: Error) {
+        print("❌ SpeakerRecognizer request failed: \(error)")
+        Task { @MainActor in
+            self.isComplete = true
         }
     }
-
-    func request(_ request: SNRequest, didFailWithError error: Error) {
-        inferenceContinuation?.resume(throwing: error)
-        inferenceContinuation = nil
-    }
-
-    func requestDidComplete(_ request: SNRequest) {
-        let sorted = pendingResults.sorted { $0.1 > $1.1 }
-        inferenceContinuation?.resume(returning: sorted)
-        inferenceContinuation = nil
+    
+    nonisolated func requestDidComplete(_ request: SNRequest) {
+        Task { @MainActor in
+            self.isComplete = true
+        }
     }
 }
