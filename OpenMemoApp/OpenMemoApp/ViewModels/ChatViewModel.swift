@@ -74,7 +74,8 @@ final class ChatViewModel {
         }
     }
 
-    /// Send voice message with optional speaker identification
+    /// Send voice message with speaker identification.
+    /// 模型就绪 + 有录音数据 → 自动识别说话人（无需手动选）。
     func sendVoice(text: String, audioData: Data?) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !isSending else { return }
@@ -86,25 +87,63 @@ final class ChatViewModel {
             currentTitle = String(trimmed.prefix(30))
         }
 
-        var userText = trimmed
-        if let speaker = selectedSpeaker {
-            userText = "[\(speaker)] \(trimmed)"
-        }
-
-        messages.append(ChatMessage(role: .user, text: userText))
-        isSending = true
-        errorMessage = nil
-
-        let sessionId = currentSessionId
-        Task {
-            defer { isSending = false }
-            do {
-                let reply = try await api.chat(message: userText, sessionId: sessionId)
-                self.messages.append(ChatMessage(role: .assistant, text: reply))
-                await self.refreshSessions()
-            } catch {
-                self.messages.append(ChatMessage(role: .assistant, text: "连接失败：\(error.localizedDescription)"))
+        // 有录音 → 后台识别说话人，识别完再发（识别失败就用手动选择的说话人）
+        if let data = audioData, SpeakerRecognizer.shared.isModelReady {
+            isSending = true
+            errorMessage = nil
+            let sessionId = currentSessionId
+            Task {
+                let speaker = await Self.identifySpeaker(from: data)
+                let finalSpeaker = speaker ?? selectedSpeaker
+                let userText = Self.prefixSpeaker(finalSpeaker, trimmed)
+                await self.finishSend(userText: userText, sessionId: sessionId)
             }
+        } else {
+            let userText = Self.prefixSpeaker(selectedSpeaker, trimmed)
+            messages.append(ChatMessage(role: .user, text: userText))
+            isSending = true
+            errorMessage = nil
+            let sessionId = currentSessionId
+            Task {
+                await self.finishSend(userText: userText, sessionId: sessionId)
+            }
+        }
+    }
+
+    /// 把说话人名字做成消息前缀；nil 则不加
+    private static func prefixSpeaker(_ speaker: String?, _ text: String) -> String {
+        guard let speaker, !speaker.isEmpty else { return text }
+        return "[\(speaker)] \(text)"
+    }
+
+    /// 用录音数据识别说话人（写入临时文件 → SoundAnalysis）
+    private static func identifySpeaker(from data: Data) async -> String? {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("voice_\(UUID().uuidString).caf")
+        do {
+            try data.write(to: tmp)
+            let results = await SpeakerRecognizer.shared.identifySpeaker(audioURL: tmp)
+            try? FileManager.default.removeItem(at: tmp)
+            guard let top = results.first else { return nil }
+            // 置信度太低或识别成背景 → 不算
+            guard top.0 != "__background__", top.1 >= 0.6 else { return nil }
+            return top.0
+        } catch {
+            try? FileManager.default.removeItem(at: tmp)
+            return nil
+        }
+    }
+
+    /// 发消息 + 等回复（sendVoice 与 send 共用）
+    private func finishSend(userText: String, sessionId: String) async {
+        self.messages.append(ChatMessage(role: .user, text: userText))
+        defer { self.isSending = false }
+        do {
+            let reply = try await api.chat(message: userText, sessionId: sessionId)
+            self.messages.append(ChatMessage(role: .assistant, text: reply))
+            await self.refreshSessions()
+        } catch {
+            self.messages.append(ChatMessage(role: .assistant, text: "连接失败：\(error.localizedDescription)"))
         }
     }
 
