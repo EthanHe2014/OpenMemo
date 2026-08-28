@@ -23,7 +23,18 @@ struct SpeakerEnrollmentView: View {
     @State private var trainMessage: String?
     @State private var speakerExistedBefore = false   // 进入录音前该名字是否已在库中（决定按钮文案）
 
-    private var samplePhrase: String { "我是\(speakerName)，这是我的声音样本" }
+    /// 录音时建议说的话 —— 每段换一句，让模型学「声音」而不是「台词」
+    private let samplePhrases = [
+        "我是{名字}，这是我的声音样本",
+        "今天天气真不错，你觉得呢",
+        "晚上我想吃好吃的，你有什么推荐",
+    ]
+
+    /// 当前样本该说的句子（按样本序号轮换）
+    private var currentPhrase: String {
+        let idx = min(max(step - 2, 0), samplePhrases.count - 1)
+        return samplePhrases[idx]
+    }
 
     var body: some View {
         NavigationStack {
@@ -118,7 +129,7 @@ struct SpeakerEnrollmentView: View {
                 Text("请说：")
                     .font(OMFonts.caption)
                     .foregroundStyle(.white.opacity(0.6))
-                Text("「\(samplePhrase)」")
+                Text("「\(currentPhrase.replacingOccurrences(of: "{名字}", with: speakerName))」")
                     .font(OMFonts.body.weight(.semibold))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
