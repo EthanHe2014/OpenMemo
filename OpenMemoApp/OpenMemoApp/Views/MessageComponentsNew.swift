@@ -292,7 +292,8 @@ struct SidebarViewNew: View {
                         session: session,
                         isSelected: session.sessionId == chatVM.currentSessionId,
                         isLocked: chatVM.isLockedSession(session.sessionId),
-                        showDelete: chatVM.canDeleteSession(session.sessionId)
+                        showDelete: chatVM.canDeleteSession(session.sessionId),
+                        showRename: chatVM.canRenameSession(session.sessionId)
                     ) {
                         Task {
                             await chatVM.selectSession(session)
@@ -325,6 +326,7 @@ struct SessionRow: View {
     let isSelected: Bool
     var isLocked: Bool = false
     var showDelete: Bool = true
+    var showRename: Bool = true
     let onSelect: () -> Void
     let onRename: () -> Void
     let onDelete: () -> Void
@@ -361,20 +363,22 @@ struct SessionRow: View {
                 
                 Spacer()
                 
-                // 重命名 + 删除按钮（删除只有会话主人可见）
+                // 重命名 + 删除按钮（都只有会话主人可见）
                 HStack(spacing: 4) {
-                    Button {
-                        onRename()
-                    } label: {
-                        Image(systemName: "pencil")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.7))
-                            .frame(width: 26, height: 26)
-                            .background(Color.white.opacity(0.08))
-                            .clipShape(Circle())
-                            .hoverGlow()
+                    if showRename {
+                        Button {
+                            onRename()
+                        } label: {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.7))
+                                .frame(width: 26, height: 26)
+                                .background(Color.white.opacity(0.08))
+                                .clipShape(Circle())
+                                .hoverGlow()
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                     
                     if showDelete {
                         Button {

@@ -106,6 +106,11 @@ final class ChatViewModel {
         return true
     }
 
+    /// 谁能重命名：与删除同规则，只有会话主人可以
+    func canRenameSession(_ sessionId: String) -> Bool {
+        canDeleteSession(sessionId)
+    }
+
     /// 删除服务端会话并从侧边栏移除。
     func deleteSession(_ session: ChatSession) async {
         do {
