@@ -3,6 +3,13 @@ import AVFoundation
 import SoundAnalysis
 import CreateML
 
+/// 录音文件盒子：tap 回调线程里懒创建 + 写入（音频线程安全）
+final class RecorderBox: @unchecked Sendable {
+    var file: AVAudioFile?
+    var error: String?
+    var written: Int = 0
+}
+
 /// Speaker recognition service using Apple's SoundAnalysis framework.
 /// Reads speaker models written by tools/train_speaker.swift
 /// Detects who is speaking in an audio file and returns results with confidence scores.
@@ -19,8 +26,7 @@ import CreateML
 /// Speaker identification service using Apple's SoundAnalysis framework
 @MainActor
 final class SpeakerRecognizer: NSObject, SNResultsObserving {
-    static let shared = SpeakerRecognizer()
-    
+    static let shared = SpeakerRecognizer()    
     /// Speaker identification model ready flag
     var isModelReady: Bool { mlModel != nil }
     
@@ -155,17 +161,30 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
             throw NSError(domain: "SpeakerRecognizer", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "没有可用的麦克风输入格式"])
         }
-        let recorder: AVAudioFile
-        do {
-            recorder = try AVAudioFile(forWriting: fileURL, settings: nativeFormat.settings)
-        } catch {
-            Self.logToFile("ERROR: AVAudioFile create failed: \(error)")
-            throw error
-        }
-        Self.logToFile("AVAudioFile created")
-
+        let recorderBox = RecorderBox()
         engine.inputNode.installTap(onBus: 0, bufferSize: 4096, format: nativeFormat) { buffer, _ in
-            try? recorder.write(from: buffer)
+            // 用实际送达的 buffer 格式懒创建文件 —— 保证写文件格式永远匹配，
+            // 避免 AVAudioFile.write 的格式不匹配抛 ObjC 异常（EXC_BREAKPOINT）
+            if recorderBox.file == nil {
+                do {
+                    recorderBox.file = try AVAudioFile(forWriting: fileURL, settings: buffer.format.settings)
+                    Self.logToFile("file created from buffer format: sr=\(buffer.format.sampleRate) ch=\(buffer.format.channelCount)")
+                } catch {
+                    recorderBox.error = "file create: \(error)"
+                    Self.logToFile("ERROR: \(recorderBox.error ?? "?")")
+                    return
+                }
+            }
+            do {
+                try recorderBox.file?.write(from: buffer)
+                recorderBox.written += 1
+                if recorderBox.written % 20 == 0 {
+                    Self.logToFile("written \(recorderBox.written) buffers")
+                }
+            } catch {
+                recorderBox.error = "write: \(error)"
+                Self.logToFile("ERROR: \(recorderBox.error ?? "?")")
+            }
         }
         Self.logToFile("tap installed")
         engine.prepare()
@@ -192,7 +211,6 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
         Self.logToFile("engine started")
 
         recEngine = engine
-        recFile = recorder
         recURL = fileURL
         recStart = Date()
         recSpeaker = name
