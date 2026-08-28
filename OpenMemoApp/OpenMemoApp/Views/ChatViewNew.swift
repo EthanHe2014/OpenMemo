@@ -35,7 +35,11 @@ struct ChatViewNew: View {
             
             // 锁屏：别人的私密聊天
             if chatVM.isLockedChat {
-                LockedChatView(speakerName: chatVM.lockedSpeakerName)
+                LockedChatView(speakerName: chatVM.lockedSpeakerName) {
+                    withAnimation(OMAnimations.spring) {
+                        showSidebar = true
+                    }
+                }
             }
             
             // Sidebar overlay
@@ -364,6 +368,7 @@ struct ChatViewNew: View {
 // MARK: - Locked Chat View (别人的专属会话)
 struct LockedChatView: View {
     let speakerName: String
+    var onShowChats: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 18) {
@@ -385,6 +390,24 @@ struct LockedChatView: View {
                 .foregroundStyle(.white.opacity(0.5))
                 .multilineTextAlignment(.center)
                 .lineSpacing(4)
+
+            // 查看聊天列表
+            Button {
+                onShowChats()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "text.bubble")
+                    Text("查看聊天列表")
+                }
+                .font(OMFonts.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
+                .background(Color.white.opacity(0.12))
+                .clipShape(Capsule())
+                .hoverGlow()
+            }
+            .buttonStyle(.plain)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(OMColors.background.opacity(0.65))
