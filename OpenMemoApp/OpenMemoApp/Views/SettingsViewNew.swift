@@ -137,7 +137,7 @@ struct SettingsViewNew: View {
                                     .fill(speakerModelReady ? OMColors.success.opacity(0.2) : OMColors.error.opacity(0.2))
                                     .frame(width: 36, height: 36)
                                     .overlay {
-                                        Image(systemName: speakerModelReady ? "person.checkmark" : "person.crop.circle.badge.questionmark")
+                                        Image(systemName: speakerModelReady ? "person.crop.circle.badge.checkmark" : "person.crop.circle.badge.xmark")
                                             .font(.system(size: 16))
                                             .foregroundStyle(speakerModelReady ? OMColors.success : OMColors.error)
                                     }
