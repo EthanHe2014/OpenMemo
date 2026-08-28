@@ -50,9 +50,10 @@ final class SpeakerAudioCaptureBox: @unchecked Sendable {
                 VoiceInputManager.logFile("capture: EMPTY (buffers=\(self.buffers.count) format=\(String(describing: self.format)))")
                 return
             }
-            let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("speaker_cap_\(UUID().uuidString).wav")
+            let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("speaker_cap_\(UUID().uuidString).caf")
             do {
                 // 用实际 buffer 格式创建文件
+                // ⚠️ 必须 .caf：SoundAnalysis 读 WAV 容器会静默返回空结果（实测）
                 guard let firstFormat = self.buffers.first?.format else { return }
                 let file = try AVAudioFile(forWriting: tmp, settings: firstFormat.settings)
                 var written = 0
