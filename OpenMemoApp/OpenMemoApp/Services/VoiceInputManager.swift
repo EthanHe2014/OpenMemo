@@ -65,6 +65,46 @@ final class SpeakerAudioCaptureBox: @unchecked Sendable {
 @MainActor
 @Observable
 final class VoiceInputManager {
+    /// 所有存活实例（每个聊天页一个）。录音等任务占用麦克风前，
+    /// 必须 suspendAllForRecording()，否则两个 AVAudioEngine 抢同一个输入会崩。
+    private static var instances: [VoiceInputManager] = []
+
+    /// 暂停所有实例的唤醒监听（不会自动重挂）——麦克风要被其它任务独占时调用
+    nonisolated static func suspendAllForRecording() async {
+        await MainActor.run {
+            for vm in instances {
+                vm.suspendForRecording()
+            }
+        }
+    }
+
+    /// 恢复所有实例的唤醒监听（录音结束后调用）
+    nonisolated static func resumeAllAfterRecording() async {
+        await MainActor.run {
+            for vm in instances {
+                vm.resumeAfterRecording()
+            }
+        }
+    }
+
+    init() {
+        VoiceInputManager.instances.append(self)
+    }
+
+    /// 暂停监听且禁止自动重挂（stop() 的自动重挂会重新抢麦克风）
+    func suspendForRecording() {
+        isRearming = true
+        stop()
+        isRearming = false
+    }
+
+    /// 恢复监听（唤醒词开关还开着的话）
+    func resumeAfterRecording() {
+        if wakeModeEnabled && !isListening && !isStarting {
+            startWakeListening()
+        }
+    }
+
     /// 状态
     var isListening = false       // 音频引擎是否在跑
     var isTranscribing = false    // 是否处于留言模式（唤醒后 / 直接按麦）

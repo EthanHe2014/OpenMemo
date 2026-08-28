@@ -116,6 +116,10 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
         }
         guard recEngine == nil else { return false }  // 已在录音
 
+        // ⚠️ 关键：先停掉唤醒词引擎（VoiceInputManager 一直占用麦克风）。
+        // 两个 AVAudioEngine 同时 tap 同一个输入 → CoreAudio EXC_BAD_ACCESS。
+        await VoiceInputManager.suspendAllForRecording()
+
         let fm = FileManager.default
         guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return false }
         let safeName = Self.sanitize(name)
@@ -127,6 +131,12 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
         let fileURL = speakerDir.appendingPathComponent("\(timestamp).m4a")
 
         let engine = AVAudioEngine()
+        // 输入格式校验：麦克风被占用/异常时这里可能拿到空格式，直接失败而不是崩溃
+        let nativeFormat = engine.inputNode.outputFormat(forBus: 0)
+        guard nativeFormat.sampleRate > 0, nativeFormat.channelCount > 0 else {
+            throw NSError(domain: "SpeakerRecognizer", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "没有可用的麦克风输入格式"])
+        }
         let format = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: sampleRate,

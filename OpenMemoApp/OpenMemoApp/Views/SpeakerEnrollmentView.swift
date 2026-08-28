@@ -49,7 +49,11 @@ struct SpeakerEnrollmentView: View {
                 }
             }
             .onAppear { modelReady = SpeakerRecognizer.shared.isModelReady }
-            .onDisappear { cancelRecordingIfActive() }
+            .onDisappear {
+                cancelRecordingIfActive()
+                // 录音占用的麦克风还回去，唤醒词恢复监听
+                Task { await VoiceInputManager.resumeAllAfterRecording() }
+            }
         }
         .preferredColorScheme(.dark)
     }
