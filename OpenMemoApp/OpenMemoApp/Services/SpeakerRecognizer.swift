@@ -354,44 +354,50 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
     
     /// Identify speaker in audio file
     func identifySpeaker(audioURL: URL) async -> [(String, Double)] {
+        Self.logToFile("identifySpeaker: url=\(audioURL.path)")
         guard let mlModel = mlModel else {
-            print("⚠️ SpeakerRecognizer: Model not ready")
+            Self.logToFile("identifySpeaker: MODEL NIL")
             return []
         }
-        
         guard let classificationRequest = classificationRequest else {
-            print("⚠️ SpeakerRecognizer: Classification request not available")
+            Self.logToFile("identifySpeaker: REQUEST NIL")
             return []
         }
-        
+        Self.logToFile("identifySpeaker: model+request ok, file size=\((try? audioURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? -1)")
+
         do {
             let fileRequest = try SNAudioFileAnalyzer(url: audioURL)
-            
+            Self.logToFile("identifySpeaker: analyzer created")
+
             // Reset state
             lastResult = nil
             isComplete = false
-            
+
             // Add observer (self is the SNResultsObserving)
             try fileRequest.add(classificationRequest, withObserver: self)
-            
+            Self.logToFile("identifySpeaker: observer added")
+
             // Start analysis
             try await fileRequest.analyze()
-            
+            Self.logToFile("identifySpeaker: analyze() returned")
+
             // Wait for completion (max 5 seconds)
             let timeout = Date().addingTimeInterval(5)
             while !isComplete && Date() < timeout {
                 try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
             }
-            
+            Self.logToFile("identifySpeaker: polling done, isComplete=\(isComplete), lastResult=\(String(describing: lastResult))")
+
             fileRequest.cancelAnalysis()
-            
+
             // Return results
             if let result = lastResult {
                 return [(result.speaker, result.confidence)]
             }
             return []
-            
+
         } catch {
+            Self.logToFile("identifySpeaker: ANALYSIS FAILED - \(error)")
             print("❌ SpeakerRecognizer: Analysis failed - \(error)")
             return []
         }
