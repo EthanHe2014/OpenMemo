@@ -8,7 +8,7 @@ import SwiftUI
 struct SpeakerEnrollmentView: View {
     @Environment(\.dismiss) private var dismiss
 
-    private let totalSamples = 3
+    private let totalSamples = 10   // 一个说话人 = 一次流程录 10 个样本
 
     @State private var step = 1
     @State private var speakerName = ""
@@ -32,7 +32,8 @@ struct SpeakerEnrollmentView: View {
 
     /// 当前样本该说的句子（按样本序号轮换）
     private var currentPhrase: String {
-        let idx = min(max(step - 2, 0), samplePhrases.count - 1)
+        // 10 个样本轮换 3 句话（0,1,2,0,1,2,...），让模型学声音而不是台词
+        let idx = max(step - 2, 0) % samplePhrases.count
         return samplePhrases[idx]
     }
 
@@ -46,7 +47,7 @@ struct SpeakerEnrollmentView: View {
                         progressHeader
                         switch step {
                         case 1: namePage
-                        case 2, 3, 4: recordingPage(sampleIndex: step - 1)
+                        case 2...(totalSamples + 1): recordingPage(sampleIndex: step - 1)
                         case 5: trainingPage
                         default: donePage
                         }
@@ -76,7 +77,7 @@ struct SpeakerEnrollmentView: View {
 
     private var progressHeader: some View {
         HStack(spacing: 6) {
-            ForEach(1...6, id: \.self) { s in
+            ForEach(1...(totalSamples + 3), id: \.self) { s in
                 Capsule()
                     .fill(s <= step ? AnyShapeStyle(OMColors.primaryGradient) : AnyShapeStyle(Color.white.opacity(0.15)))
                     .frame(height: 4)
@@ -308,7 +309,7 @@ struct SpeakerEnrollmentView: View {
 
     private var navFooter: some View {
         HStack {
-            if step > 1 && step <= 5 {
+            if step > 1 && step <= totalSamples + 2 {
                 Button("上一步") { goBack() }
                     .buttonStyle(plainNav())
             }
@@ -317,7 +318,7 @@ struct SpeakerEnrollmentView: View {
                 Button("下一步") { goNext() }
                     .buttonStyle(plainNav(accent: true))
                     .disabled(speakerName.trimmingCharacters(in: .whitespaces).isEmpty)
-            } else if step <= 4 {
+            } else if step <= totalSamples + 1 {
                 Button("下一步") { goNext() }
                     .buttonStyle(plainNav(accent: true))
                     .disabled(savedInfo == nil || isRecording)
@@ -342,13 +343,13 @@ struct SpeakerEnrollmentView: View {
             step = 2
             return
         }
-        if step >= 2 && step <= 4 {
+        if step >= 2 && step <= totalSamples + 1 {
             guard savedInfo != nil, !isRecording else { return }
             step += 1
             savedInfo = nil
             lastSavedURL = nil
             errorMessage = nil
-            if step >= 6 { modelReady = SpeakerRecognizer.shared.isModelReady }
+            if step >= totalSamples + 3 { modelReady = SpeakerRecognizer.shared.isModelReady }
             return
         }
         step += 1
