@@ -85,21 +85,32 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
     
     // MARK: - Manual sample recording (wizard: tap start → speak → tap stop)
 
-    /// 麦克风权限（Catalyst 需要显式请求；拒绝则返回 false）
+    /// 麦克风权限（Catalyst 用 AVAudioSession —— 与 VoiceInputManager 同路径，绝对可用）
     nonisolated static func ensureMicPermission() async -> Bool {
-        #if os(iOS) || targetEnvironment(macCatalyst)
-        if #available(iOS 17.0, macOS 14.0, *) {
-            return await AVAudioApplication.requestRecordPermission()
-        } else {
-            return await withCheckedContinuation { cont in
-                AVAudioSession.sharedInstance().requestRecordPermission { granted in
-                    cont.resume(returning: granted)
+        await withCheckedContinuation { cont in
+            AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                cont.resume(returning: granted)
+            }
+        }
+    }
+
+    /// 写录音调试日志（崩溃后能定位到底死在哪一步）
+    nonisolated static func logToFile(_ msg: String) {
+        let line = "\(Date().timeIntervalSince1970) \(msg)\n"
+        if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+            let url = docs.appendingPathComponent("speaker_recording.log")
+            if let data = line.data(using: .utf8) {
+                if FileManager.default.fileExists(atPath: url.path) {
+                    if let fh = try? FileHandle(forWritingTo: url) {
+                        fh.seekToEndOfFile()
+                        fh.write(data)
+                        try? fh.close()
+                    }
+                } else {
+                    try? data.write(to: url)
                 }
             }
         }
-        #else
-        return true
-        #endif
     }
 
     private var recEngine: AVAudioEngine?
@@ -110,15 +121,19 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
 
     /// 开始录音：创建引擎 + 文件（后台线程启动，绝不在主线程 start）
     func beginRecording(forSpeaker name: String) async throws -> Bool {
+        Self.logToFile("== beginRecording(\(name)) ==")
         guard await Self.ensureMicPermission() else {
+            Self.logToFile("mic permission denied")
             print("❌ 麦克风权限被拒绝")
             return false
         }
+        Self.logToFile("mic permission ok")
         guard recEngine == nil else { return false }  // 已在录音
 
         // ⚠️ 关键：先停掉唤醒词引擎（VoiceInputManager 一直占用麦克风）。
         // 两个 AVAudioEngine 同时 tap 同一个输入 → CoreAudio EXC_BAD_ACCESS。
         await VoiceInputManager.suspendAllForRecording()
+        Self.logToFile("wake engines suspended")
 
         let fm = FileManager.default
         guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return false }
@@ -129,40 +144,52 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
         let timestamp = ISO8601DateFormatter().string(from: Date())
             .replacingOccurrences(of: ":", with: "-")
         let fileURL = speakerDir.appendingPathComponent("\(timestamp).m4a")
+        Self.logToFile("file: \(fileURL.path)")
 
         let engine = AVAudioEngine()
-        // 输入格式校验：麦克风被占用/异常时这里可能拿到空格式，直接失败而不是崩溃
+        // 用麦克风原生格式（与 VoiceInputManager 完全一致，避免强制 16kHz 转换的坑）
         let nativeFormat = engine.inputNode.outputFormat(forBus: 0)
+        Self.logToFile("native format: sr=\(nativeFormat.sampleRate) ch=\(nativeFormat.channelCount)")
         guard nativeFormat.sampleRate > 0, nativeFormat.channelCount > 0 else {
+            Self.logToFile("ERROR: no usable input format")
             throw NSError(domain: "SpeakerRecognizer", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "没有可用的麦克风输入格式"])
         }
-        let format = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: sampleRate,
-            channels: AVAudioChannelCount(channelCount),
-            interleaved: false
-        )!
-        let recorder = try AVAudioFile(forWriting: fileURL, settings: format.settings)
+        let recorder: AVAudioFile
+        do {
+            recorder = try AVAudioFile(forWriting: fileURL, settings: nativeFormat.settings)
+        } catch {
+            Self.logToFile("ERROR: AVAudioFile create failed: \(error)")
+            throw error
+        }
+        Self.logToFile("AVAudioFile created")
 
-        engine.inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in
+        engine.inputNode.installTap(onBus: 0, bufferSize: 4096, format: nativeFormat) { buffer, _ in
             try? recorder.write(from: buffer)
         }
+        Self.logToFile("tap installed")
+        engine.prepare()
 
         // ⚠️ Catalyst 血泪教训（同 VoiceInputManager）：
         // AVAudioEngine.start() 在 Catalyst + USB 麦克风上会卡住主线程 →
         // 必须后台线程启动，主线程绝不能被阻塞。
         let engineBox = AudioEngineBox(engine)
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            Task.detached(priority: .userInitiated) {
-                do {
-                    try engineBox.engine.start()
-                    cont.resume()
-                } catch {
-                    cont.resume(throwing: error)
+        do {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                Task.detached(priority: .userInitiated) {
+                    do {
+                        try engineBox.engine.start()
+                        cont.resume()
+                    } catch {
+                        cont.resume(throwing: error)
+                    }
                 }
             }
+        } catch {
+            Self.logToFile("ERROR: engine.start failed: \(error)")
+            throw error
         }
+        Self.logToFile("engine started")
 
         recEngine = engine
         recFile = recorder
@@ -175,7 +202,10 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
 
     /// 停止录音并保存样本，返回 (文件 URL, 时长秒数)
     func stopRecording() -> (url: URL, duration: TimeInterval)? {
-        guard let engine = recEngine, let start = recStart else { return nil }
+        guard let engine = recEngine, let start = recStart else {
+            Self.logToFile("stopRecording: nothing to stop")
+            return nil
+        }
         engine.stop()
         engine.inputNode.removeTap(onBus: 0)
         let duration = Date().timeIntervalSince(start)
@@ -191,6 +221,7 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
             enrolledSpeakers.append(name)
             saveEnrolledSpeakers()
         }
+        Self.logToFile("stopRecording: saved \(url?.path ?? "?") (\(Int(duration))s)")
         print("✅ 样本已保存 (\(Int(duration))s): \(url?.path ?? "?")")
         return url.map { ($0, duration) }
     }
@@ -208,6 +239,7 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
         recURL = nil
         recStart = nil
         recSpeaker = nil
+        Self.logToFile("cancelRecording")
     }
 
     /// 删除某个样本文件（重录时用）
