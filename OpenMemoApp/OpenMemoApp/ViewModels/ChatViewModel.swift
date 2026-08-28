@@ -5,6 +5,7 @@ struct ChatMessage: Identifiable, Equatable {
     let id = UUID()
     let role: Role
     let text: String
+    var speaker: String? = nil
 
     enum Role {
         case user, assistant
@@ -136,7 +137,9 @@ final class ChatViewModel {
 
     /// 发消息 + 等回复（sendVoice 与 send 共用）
     private func finishSend(userText: String, sessionId: String, speaker: String? = nil) async {
-        self.messages.append(ChatMessage(role: .user, text: userText))
+        // 展示时去掉 "[名字] " 前缀，speaker 单独存（气泡底部显示）；发给 AI 的仍带前缀
+        let displayText = Self.extractSpeaker(from: userText)?.clean ?? userText
+        self.messages.append(ChatMessage(role: .user, text: displayText, speaker: speaker))
         defer { self.isSending = false }
         do {
             let reply = try await api.chat(message: userText, sessionId: sessionId, speaker: speaker)
@@ -147,12 +150,32 @@ final class ChatViewModel {
         }
     }
 
+    /// 从 "[名字] 正文" 解析出 (名字, 正文)；没有前缀则原样返回
+    static func extractSpeaker(from text: String) -> (name: String, clean: String)? {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard t.hasPrefix("[") else { return nil }
+        if let end = t.firstIndex(of: "]") {
+            let name = String(t[t.index(after: t.startIndex)..<end]).trimmingCharacters(in: .whitespaces)
+            let rest = String(t[t.index(after: end)...]).trimmingCharacters(in: .whitespaces)
+            if !name.isEmpty {
+                return (name, rest)
+            }
+        }
+        return nil
+    }
+
     private func loadHistory(sessionId: String) async {
         isLoading = true
         defer { isLoading = false }
         do {
             let history = try await api.getConversations(sessionId: sessionId)
-            messages = history
+            // 服务端消息可能带 "[名字] " 前缀 → 解析成 speaker 字段，正文保持干净
+            messages = history.map { msg in
+                if msg.role == .user, let parsed = Self.extractSpeaker(from: msg.text) {
+                    return ChatMessage(role: .user, text: parsed.clean, speaker: parsed.name)
+                }
+                return msg
+            }
         } catch {
             errorMessage = "无法加载对话：\(error.localizedDescription)"
         }
@@ -191,22 +214,22 @@ final class ChatViewModel {
             currentTitle = String(text.prefix(30))
         }
 
-        messages.append(ChatMessage(role: .user, text: text))
+        if currentSessionId.isEmpty {
+            currentSessionId = "ios_" + UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "")
+        }
+        // 从第一条用户消息生成标题（类似 DeepSeek）。
+        if messages.isEmpty {
+            currentTitle = String(text.prefix(30))
+        }
         inputText = ""
         isSending = true
         errorMessage = nil
 
         let sessionId = currentSessionId
+        let speaker = selectedSpeaker
+        let userText = Self.prefixSpeaker(speaker, text)
         Task {
-            defer { isSending = false }
-            do {
-                let reply = try await api.chat(message: text, sessionId: sessionId)
-                self.messages.append(ChatMessage(role: .assistant, text: reply))
-                // 保持侧边栏最新，让新建/更新的会话出现在顶部。
-                await self.refreshSessions()
-            } catch {
-                self.messages.append(ChatMessage(role: .assistant, text: "连接失败：\(error.localizedDescription)"))
-            }
+            await self.finishSend(userText: userText, sessionId: sessionId, speaker: speaker)
         }
     }
 }

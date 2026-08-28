@@ -465,6 +465,18 @@ struct ChatBubbleView: View {
             if message.role == .assistant {
                 Spacer(minLength: 60)
             }
+
+            // 说话人标签（气泡底部）
+            if let speaker = message.speaker, !speaker.isEmpty {
+                HStack(spacing: 3) {
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 8))
+                    Text(speaker)
+                        .font(.caption2.weight(.medium))
+                }
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+            }
         }
     }
 

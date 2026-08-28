@@ -40,6 +40,18 @@ struct MessageBubbleNew: View {
                         .foregroundStyle(.white.opacity(0.4))
                         .padding(.horizontal, 4)
                 }
+                
+                // 说话人标签（气泡底部）
+                if let speaker = message.speaker, !speaker.isEmpty {
+                    HStack(spacing: 3) {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 8))
+                        Text(speaker)
+                            .font(OMFonts.caption2.weight(.medium))
+                    }
+                    .foregroundStyle(.white.opacity(0.45))
+                    .padding(.horizontal, 4)
+                }
             }
             
             if message.role == .assistant {
