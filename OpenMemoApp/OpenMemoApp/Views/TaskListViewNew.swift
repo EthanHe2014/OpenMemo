@@ -49,6 +49,10 @@ struct TaskListViewNew: View {
         .task {
             await taskVM.load()
         }
+        // 语音识别出说话人 → 立即解锁并刷新任务
+        .onReceive(NotificationCenter.default.publisher(for: .speakerUnlocked)) { _ in
+            Task { await taskVM.load() }
+        }
     }
     
     // MARK: - Header
@@ -607,7 +611,7 @@ struct TaskLockedView: View {
             Text("任务已锁定")
                 .font(OMFonts.title3.weight(.semibold))
                 .foregroundStyle(.white)
-            Text("先说「小麦小麦」并说一句话\\n识别出你是谁后，这里只显示你的任务")
+            Text("说「小麦小麦，打开我的任务」\\n识别出你是谁后，这里只显示你的任务")
                 .font(OMFonts.caption)
                 .foregroundStyle(.white.opacity(0.5))
                 .multilineTextAlignment(.center)

@@ -100,6 +100,8 @@ final class ChatViewModel {
     func unlockSpeaker(_ name: String) {
         unlockedSpeaker = name
         UserDefaults.standard.set(name, forKey: "siUnlockedSpeaker")
+        // 通知任务页立即刷新（语音解锁：说一句话即解锁并显示 TA 的任务）
+        NotificationCenter.default.post(name: .speakerUnlocked, object: name)
     }
 
     /// 谁能删除这个会话：只有会话主人（已识别的对应说话人）可以。
@@ -382,4 +384,9 @@ final class ChatViewModel {
             await self.finishSend(userText: userText, sessionId: sessionId, speaker: speaker)
         }
     }
+}
+
+
+extension Notification.Name {
+    static let speakerUnlocked = Notification.Name("speakerUnlocked")
 }

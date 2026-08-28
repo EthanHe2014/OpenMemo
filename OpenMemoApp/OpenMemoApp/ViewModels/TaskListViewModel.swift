@@ -39,8 +39,16 @@ final class TaskListViewModel {
     func load() async {
         isLoading = true
         errorMessage = nil
+        // 没识别出说话人：不拉任何任务（避免未过滤数据加载到界面）
+        guard let owner = currentOwner else {
+            self.tasks = []
+            self.isLoading = false
+            await pollReminders()
+            await pollAlerts()
+            return
+        }
         do {
-            let resp = try await api.listTasks(owner: currentOwner)
+            let resp = try await api.listTasks(owner: owner)
             self.tasks = resp.tasks
             await pollReminders()   // 先轮询提醒（横幅）——不被本地通知同步阻塞
             await pollAlerts()      // 再轮询看护告警（横幅）
