@@ -9,6 +9,8 @@ struct SpeakerEnrollmentView: View {
     @State private var isRecording = false
     @State private var modelReady = false
     @State private var recordingSpeaker: String?
+    @State private var errorMessage: String?
+    @State private var lastRecorded: String?
     
     var body: some View {
         NavigationStack {
@@ -76,9 +78,19 @@ struct SpeakerEnrollmentView: View {
                 .disabled(speakerName.isEmpty || isRecording)
             }
             if isRecording {
-                Text("正在为 \(recordingSpeaker ?? "") 录音... (3秒)")
+                Text("正在为 \(recordingSpeaker ?? "") 录音... (3秒，请开始说话)")
                     .font(OMFonts.caption)
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(OMColors.warning)
+            }
+            if let err = errorMessage {
+                Label(err, systemImage: "exclamationmark.triangle.fill")
+                    .font(OMFonts.caption)
+                    .foregroundStyle(OMColors.error)
+            }
+            if let done = lastRecorded {
+                Label("已保存 \(done) 的样本", systemImage: "checkmark.circle.fill")
+                    .font(OMFonts.caption)
+                    .foregroundStyle(OMColors.success)
             }
         }
         .padding()
@@ -129,12 +141,19 @@ struct SpeakerEnrollmentView: View {
     
     private func startRecording() async {
         guard !speakerName.isEmpty else { return }
+        errorMessage = nil
+        lastRecorded = nil
         isRecording = true
         recordingSpeaker = speakerName
         let success = await SpeakerRecognizer.shared.startRecordingSample(forSpeaker: speakerName)
         isRecording = false
         recordingSpeaker = nil
-        if success { refreshModelStatus() }
+        if success {
+            lastRecorded = speakerName
+            refreshModelStatus()
+        } else {
+            errorMessage = "录音失败：请检查麦克风权限"
+        }
     }
     
     private func refreshModelStatus() {

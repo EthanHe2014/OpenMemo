@@ -84,22 +84,44 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
     }
     
     // MARK: - Recording Samples (for training)
-    
+
+    /// 麦克风权限（Catalyst 需要显式请求；拒绝则返回 false）
+    nonisolated static func ensureMicPermission() async -> Bool {
+        #if os(iOS) || targetEnvironment(macCatalyst)
+        if #available(iOS 17.0, macOS 14.0, *) {
+            return await AVAudioApplication.requestRecordPermission()
+        } else {
+            return await withCheckedContinuation { cont in
+                AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                    cont.resume(returning: granted)
+                }
+            }
+        }
+        #else
+        return true
+        #endif
+    }
+
     func startRecordingSample(forSpeaker name: String) async -> Bool {
+        // 1. 权限：没授权直接失败（不再 try! 崩溃）
+        guard await Self.ensureMicPermission() else {
+            print("❌ 麦克风权限被拒绝")
+            return false
+        }
+
         let fm = FileManager.default
         guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return false }
-        
+
         // Create speaker directory
         let speakerDir = docs.appendingPathComponent("speaker_samples/\(name)", isDirectory: true)
         try? fm.createDirectory(at: speakerDir, withIntermediateDirectories: true)
-        
+
         // Generate filename
         let timestamp = ISO8601DateFormatter().string(from: Date())
             .replacingOccurrences(of: ":", with: "-")
         let filename = "\(timestamp).m4a"
         let fileURL = speakerDir.appendingPathComponent(filename)
-        
-        // Start recording
+
         let engine = AVAudioEngine()
         let format = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
@@ -107,27 +129,47 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
             channels: AVAudioChannelCount(channelCount),
             interleaved: false
         )!
-        
-        let recorder = try! AVAudioFile(forWriting: fileURL, settings: format.settings)
-        
-        engine.inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in
-            try? recorder.write(from: buffer)
+
+        do {
+            let recorder = try AVAudioFile(forWriting: fileURL, settings: format.settings)
+
+            engine.inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in
+                try? recorder.write(from: buffer)
+            }
+
+            // ⚠️ Catalyst 血泪教训（同 VoiceInputManager）：
+            // AVAudioEngine.start() 在 Catalyst + USB 麦克风上会卡住主线程 →
+            // 必须后台线程启动，主线程绝不能被阻塞。
+            // （用 @unchecked Sendable 盒子绕开 Swift 6 sending 检查，同 AudioEngineBox）
+            let engineBox = AudioEngineBox(engine)
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                Task.detached(priority: .userInitiated) {
+                    do {
+                        try engineBox.engine.start()
+                        cont.resume()
+                    } catch {
+                        cont.resume(throwing: error)
+                    }
+                }
+            }
+
+            // Wait 3 seconds to collect sample
+            try await Task.sleep(nanoseconds: 3_000_000_000)
+
+            engine.stop()
+            engine.inputNode.removeTap(onBus: 0)
+        } catch {
+            print("❌ 录音失败: \(error)")
+            if engine.isRunning { engine.stop() }
+            return false
         }
-        
-        try! engine.start()
-        
-        // Wait 3 seconds to collect sample
-        try! await Task.sleep(nanoseconds: 3_000_000_000)
-        
-        engine.stop()
-        engine.inputNode.removeTap(onBus: 0)
-        
+
         // Update speaker list
         if !enrolledSpeakers.contains(name) {
             enrolledSpeakers.append(name)
             saveEnrolledSpeakers()
         }
-        
+
         print("✅ Sample saved: \(fileURL.path)")
         return true
     }
