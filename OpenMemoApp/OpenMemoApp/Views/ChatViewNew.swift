@@ -19,27 +19,46 @@ struct ChatViewNew: View {
             OMBackground(.chat)
             
             VStack(spacing: 0) {
-                // Custom navigation bar（锁定时也保留，左上角三横线可打开聊天列表）
+                // Custom navigation bar
                 navBar
                 
-                ZStack {
-                    VStack(spacing: 0) {
-                        // Messages
-                        messageList
-                        
-                        // Input area
-                        inputSection
+                // Messages
+                messageList
+                
+                // Input area
+                inputSection
+            }
+            // 别人的专属会话 → 整个界面模糊（含顶栏）
+            .blur(radius: chatVM.isLockedChat ? 25 : 0)
+            .allowsHitTesting(!chatVM.isLockedChat)
+            .animation(.easeInOut(duration: 0.3), value: chatVM.isLockedChat)
+            
+            // 锁屏：别人的私密聊天
+            if chatVM.isLockedChat {
+                LockedChatView(speakerName: chatVM.lockedSpeakerName)
+                
+                // 模糊之上保留左上角三横线（打开聊天列表）
+                VStack {
+                    HStack {
+                        Button {
+                            withAnimation(OMAnimations.spring) {
+                                showSidebar.toggle()
+                            }
+                        } label: {
+                            Image(systemName: "line.3.horizontal")
+                                .font(.system(size: 22, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 44, height: 44)
+                                .glass(cornerRadius: 14)
+                                .hoverGlow()
+                        }
+                        .buttonStyle(.plain)
+                        Spacer()
                     }
-                    // 别人的专属会话 → 内容模糊 + 锁屏遮罩（顶栏不受影响）
-                    .blur(radius: chatVM.isLockedChat ? 25 : 0)
-                    .allowsHitTesting(!chatVM.isLockedChat)
-                    .animation(.easeInOut(duration: 0.3), value: chatVM.isLockedChat)
-                    
-                    // 锁屏：别人的私密聊天
-                    if chatVM.isLockedChat {
-                        LockedChatView(speakerName: chatVM.lockedSpeakerName)
-                    }
+                    Spacer()
                 }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
             }
             
             // Sidebar overlay
@@ -82,50 +101,48 @@ struct ChatViewNew: View {
                     .hoverGlow()
             }
             
-            // 锁定时只保留左上角三横线，其余全部隐藏
-            if !chatVM.isLockedChat {
-                Spacer()
+            // 锁定时整个顶栏会被模糊，左上角三横线由锁屏浮层单独提供
+            Spacer()
+            
+            VStack(spacing: 2) {
+                Text(chatVM.currentTitle)
+                    .font(OMFonts.title3)
+                    .foregroundStyle(.white)
                 
-                VStack(spacing: 2) {
-                    Text(chatVM.currentTitle)
-                        .font(OMFonts.title3)
-                        .foregroundStyle(.white)
-                    
-                    // 唤醒词常开 → 状态常驻，不随 re-arm 闪烁
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(OMColors.success)
-                            .frame(width: 6, height: 6)
-                        Text("小麦小麦 待命")
-                            .font(OMFonts.caption2)
-                            .foregroundStyle(OMColors.success)
-                    }
+                // 唤醒词常开 → 状态常驻，不随 re-arm 闪烁
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(OMColors.success)
+                        .frame(width: 6, height: 6)
+                    Text("小麦小麦 待命")
+                        .font(OMFonts.caption2)
+                        .foregroundStyle(OMColors.success)
                 }
-                
-                Spacer()
-                
-                Button {
-                    Task { await chatVM.startFresh() }
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 44, height: 44)
-                        .glass(cornerRadius: 14)
-                        .hoverGlow()
-                }
-                
-                // 删除当前会话（悬停红色发光）
-                Button {
-                    Task { await chatVM.deleteCurrentChat() }
-                } label: {
-                    Image(systemName: "trash")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 44, height: 44)
-                        .glass(cornerRadius: 14)
-                        .hoverGlow(color: OMColors.error)
-                }
+            }
+            
+            Spacer()
+            
+            Button {
+                Task { await chatVM.startFresh() }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .glass(cornerRadius: 14)
+                    .hoverGlow()
+            }
+            
+            // 删除当前会话（悬停红色发光）
+            Button {
+                Task { await chatVM.deleteCurrentChat() }
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .glass(cornerRadius: 14)
+                    .hoverGlow(color: OMColors.error)
             }
         }
         .padding(.horizontal)
