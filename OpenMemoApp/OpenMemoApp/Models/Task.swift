@@ -216,11 +216,20 @@ struct ChatRequest: Codable {
     let message: String
     let sessionId: String
     let speak: Bool
+    let speaker: String?
+
+    init(message: String, sessionId: String, speak: Bool, speaker: String? = nil) {
+        self.message = message
+        self.sessionId = sessionId
+        self.speak = speak
+        self.speaker = speaker
+    }
 
     enum CodingKeys: String, CodingKey {
         case message
         case sessionId = "session_id"
         case speak
+        case speaker
     }
 }
 

@@ -457,7 +457,7 @@ async def _apply_ai_action(result: dict, session_id: str):
 
 
 async def process_message(session_id: str, user_message: str,
-                          speak_response: bool = True) -> str:
+                          speak_response: bool = True, speaker: str = None) -> str:
     """Handle a user message.
 
     Flow:
@@ -467,10 +467,10 @@ async def process_message(session_id: str, user_message: str,
     3. Reply with the AI's words VERBATIM.
     4. If the AI created a task / scheduled an appointment, do it.
     """
-    conv_manager.add_message(session_id, "user", user_message)
+    conv_manager.add_message(session_id, "user", user_message, speaker=speaker)
 
     context = conv_manager.get_context_for_ai(session_id)
-    result = await analyze_intent(user_message, context)
+    result = await analyze_intent(user_message, context, speaker=speaker)
 
     reply = result.get("reply") or "嗯，我在听，你说～"
 

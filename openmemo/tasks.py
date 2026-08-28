@@ -516,8 +516,11 @@ class ConversationManager:
         init_db()
     
     def add_message(self, session_id: str, role: str, content: str,
-                    intent: str = None, slots: dict = None):
-        """Add a message to conversation history"""
+                    intent: str = None, slots: dict = None, speaker: str = None):
+        """Add a message to conversation history (speaker 存进 slots，不换表结构)"""
+        if speaker:
+            slots = dict(slots or {})
+            slots["speaker"] = speaker
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute("""

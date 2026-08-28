@@ -194,11 +194,12 @@ async def chat(request: Request):
     message = body.get("message", "")
     session_id = body.get("session_id", "api_user")
     speak_response = body.get("speak", False)
+    speaker = body.get("speaker") or None
     
     if not message:
         return JSONResponse({"error": "Message is required"}, status_code=400)
     
-    reply = await process_message(session_id, message, speak_response=False)
+    reply = await process_message(session_id, message, speak_response=False, speaker=speaker)
     # 后台朗读（Edge TTS XiaoxiaoNeural，与提醒同声）：回复立即返回，语音不阻塞聊天
     if speak_response:
         asyncio.create_task(speak_safe(reply))

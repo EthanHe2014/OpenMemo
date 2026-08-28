@@ -127,9 +127,9 @@ final class OpenMemoAPI: @unchecked Sendable {
     }
 
     // MARK: - 对话
-    func chat(message: String, sessionId: String) async throws -> String {
+    func chat(message: String, sessionId: String, speaker: String? = nil) async throws -> String {
         // speak: true → 服务端用 Edge TTS（XiaoxiaoNeural）朗读回复，与提醒同声
-        let reqBody = ChatRequest(message: message, sessionId: sessionId, speak: true)
+        let reqBody = ChatRequest(message: message, sessionId: sessionId, speak: true, speaker: speaker)
         let jsonData = try encoder.encode(reqBody)
         var req = URLRequest(url: URL(string: "\(baseURL)/api/chat")!)
         req.httpMethod = "POST"

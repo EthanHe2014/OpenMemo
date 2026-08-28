@@ -96,7 +96,7 @@ final class ChatViewModel {
                 let speaker = await Self.identifySpeaker(from: data)
                 let finalSpeaker = speaker ?? selectedSpeaker
                 let userText = Self.prefixSpeaker(finalSpeaker, trimmed)
-                await self.finishSend(userText: userText, sessionId: sessionId)
+                await self.finishSend(userText: userText, sessionId: sessionId, speaker: finalSpeaker)
             }
         } else {
             let userText = Self.prefixSpeaker(selectedSpeaker, trimmed)
@@ -105,7 +105,7 @@ final class ChatViewModel {
             errorMessage = nil
             let sessionId = currentSessionId
             Task {
-                await self.finishSend(userText: userText, sessionId: sessionId)
+                await self.finishSend(userText: userText, sessionId: sessionId, speaker: selectedSpeaker)
             }
         }
     }
@@ -135,11 +135,11 @@ final class ChatViewModel {
     }
 
     /// 发消息 + 等回复（sendVoice 与 send 共用）
-    private func finishSend(userText: String, sessionId: String) async {
+    private func finishSend(userText: String, sessionId: String, speaker: String? = nil) async {
         self.messages.append(ChatMessage(role: .user, text: userText))
         defer { self.isSending = false }
         do {
-            let reply = try await api.chat(message: userText, sessionId: sessionId)
+            let reply = try await api.chat(message: userText, sessionId: sessionId, speaker: speaker)
             self.messages.append(ChatMessage(role: .assistant, text: reply))
             await self.refreshSessions()
         } catch {

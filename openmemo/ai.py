@@ -263,14 +263,17 @@ def _repair_candidates(text: str) -> list:
     return
 
 
-async def analyze_intent(user_message: str, conversation_context: list = None) -> dict:
+async def analyze_intent(user_message: str, conversation_context: list = None,
+                        speaker: str = None) -> dict:
     """Analyze user message for intent and extract slots.
-    
-    Injects current time and task context so the AI can be smarter
-    (e.g., "3点" resolves to today vs tomorrow based on current time).
+
+    Injects current time, speaker identity + privacy rules so the AI
+    knows who it is talking to and protects other people's secrets.
+    (speaker 为空 = 访客/未识别)
     """
     from datetime import datetime
     from .tasks import TaskManager
+    from .prompts import PRIVACY_RULES
     
     # Build context-aware system prompt
     now = datetime.now()
@@ -290,19 +293,24 @@ async def analyze_intent(user_message: str, conversation_context: list = None) -
     
     time_context = f"\n\n## 当前时间\n现在是 {now.strftime('%Y年%m月%d日 %H:%M')}（{time_desc}，星期{['一','二','三','四','五','六','日'][now.weekday()]}）。解析时间时请参考当前时间。"
     
-    # Add task context
-    try:
-        tm = TaskManager()
-        pending = tm.list_tasks(status="pending", limit=5)
-        if pending:
-            task_lines = [f"  - {t['content']}（{t.get('trigger_time', '无时间')}，{t['status']}）" for t in pending]
-            task_context = f"\n\n## 用户当前待办任务\n" + "\n".join(task_lines)
-        else:
-            task_context = "\n\n## 用户当前待办任务\n（无待办任务）"
-    except Exception:
-        task_context = ""
+    # 说话人身份 + 隐私：已识别才给任务上下文；访客不给任何私密信息
+    if speaker:
+        identity_context = f"\n\n## 当前说话人\n{speaker}（已通过语音识别确认）"
+        try:
+            tm = TaskManager()
+            pending = tm.list_tasks(status="pending", limit=5)
+            if pending:
+                task_lines = [f"  - {t['content']}（{t.get('trigger_time', '无时间')}，{t['status']}）" for t in pending]
+                task_context = f"\n\n## 用户当前待办任务\n" + "\n".join(task_lines)
+            else:
+                task_context = "\n\n## 用户当前待办任务\n（无待办任务）"
+        except Exception:
+            task_context = ""
+    else:
+        identity_context = "\n\n## 当前说话人\n访客（未通过语音识别）"
+        task_context = ""   # 访客：不给任务/提醒等私密信息
     
-    enhanced_prompt = SYSTEM_PROMPT + time_context + task_context
+    enhanced_prompt = SYSTEM_PROMPT + time_context + identity_context + task_context + PRIVACY_RULES
     
     messages = []
     
