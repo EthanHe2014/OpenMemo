@@ -175,7 +175,7 @@ struct SettingsViewNew: View {
                                     Text("OpenMemo")
                                         .font(OMFonts.title3.weight(.semibold))
                                         .foregroundStyle(.white)
-                                    Text("Version 1.0.0")
+                                    Text("Version 1.1.0")
                                         .font(OMFonts.caption)
                                         .foregroundStyle(.white.opacity(0.5))
                                 }

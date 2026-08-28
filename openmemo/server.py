@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="OpenMemo",
     description="AI-powered personal voice assistant with memory",
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan
 )
 
@@ -74,7 +74,7 @@ async def health_check():
     from .config import ai_model
     return {
         "name": "OpenMemo",
-        "version": "1.0.0",
+        "version": "1.1.0",
         "status": "running",
         "model": ai_model() or ""
     }

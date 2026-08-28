@@ -82,7 +82,7 @@ struct SettingsView: View {
                 // 关于
                 Section("关于") {
                     LabeledContent("名称", value: "OpenMemo")
-                    LabeledContent("版本", value: "1.0.0")
+                    LabeledContent("版本", value: "1.1.0")
                     LabeledContent("后端", value: "FastAPI")
                     if let model = backendModel, !model.isEmpty {
                         LabeledContent("模型", value: model)
