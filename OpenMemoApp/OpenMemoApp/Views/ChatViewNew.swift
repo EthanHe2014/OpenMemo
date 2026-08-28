@@ -82,47 +82,50 @@ struct ChatViewNew: View {
                     .hoverGlow()
             }
             
-            Spacer()
-            
-            VStack(spacing: 2) {
-                Text(chatVM.currentTitle)
-                    .font(OMFonts.title3)
-                    .foregroundStyle(.white)
+            // 锁定时只保留左上角三横线，其余全部隐藏
+            if !chatVM.isLockedChat {
+                Spacer()
                 
-                // 唤醒词常开 → 状态常驻，不随 re-arm 闪烁
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(OMColors.success)
-                        .frame(width: 6, height: 6)
-                    Text("小麦小麦 待命")
-                        .font(OMFonts.caption2)
-                        .foregroundStyle(OMColors.success)
+                VStack(spacing: 2) {
+                    Text(chatVM.currentTitle)
+                        .font(OMFonts.title3)
+                        .foregroundStyle(.white)
+                    
+                    // 唤醒词常开 → 状态常驻，不随 re-arm 闪烁
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(OMColors.success)
+                            .frame(width: 6, height: 6)
+                        Text("小麦小麦 待命")
+                            .font(OMFonts.caption2)
+                            .foregroundStyle(OMColors.success)
+                    }
                 }
-            }
-            
-            Spacer()
-            
-            Button {
-                Task { await chatVM.startFresh() }
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .glass(cornerRadius: 14)
-                    .hoverGlow()
-            }
-            
-            // 删除当前会话（悬停红色发光）
-            Button {
-                Task { await chatVM.deleteCurrentChat() }
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .glass(cornerRadius: 14)
-                    .hoverGlow(color: OMColors.error)
+                
+                Spacer()
+                
+                Button {
+                    Task { await chatVM.startFresh() }
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .glass(cornerRadius: 14)
+                        .hoverGlow()
+                }
+                
+                // 删除当前会话（悬停红色发光）
+                Button {
+                    Task { await chatVM.deleteCurrentChat() }
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .glass(cornerRadius: 14)
+                        .hoverGlow(color: OMColors.error)
+                }
             }
         }
         .padding(.horizontal)
