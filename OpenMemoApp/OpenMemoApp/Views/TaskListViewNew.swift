@@ -413,7 +413,7 @@ struct TaskSection: View {
             .padding(.horizontal, 4)
             
             ForEach(tasks) { task in
-                TaskCard(task: task, onToggle: { onToggle(task) })
+                TaskCard(task: task, onToggle: { onToggle(task) }, onDelete: { onDelete(task) })
                     .contextMenu {
                         Button(role: .destructive) {
                             onDelete(task)
@@ -437,6 +437,7 @@ struct TaskSection: View {
 struct TaskCard: View {
     let task: OpenMemoTask
     let onToggle: () -> Void
+    let onDelete: () -> Void
     
     @State private var isPressed = false
     
@@ -469,8 +470,19 @@ struct TaskCard: View {
                 
                 Spacer(minLength: 8)
                 
-                // Check button
-                checkButton
+                // 删除按钮（悬停红色发光）
+                Button {
+                    onDelete()
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .frame(width: 32, height: 32)
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(Circle())
+                        .hoverGlow(color: OMColors.error)
+                }
+                .buttonStyle(.plain)
             }
             .padding()
             .glass(cornerRadius: 18)
@@ -534,18 +546,6 @@ struct TaskCard: View {
         Label(recurringText(rec), systemImage: "repeat")
             .font(OMFonts.caption.weight(.medium))
             .foregroundStyle(OMColors.warning)
-    }
-    
-    private var checkButton: some View {
-        ZStack {
-            Circle()
-                .fill(task.isCompleted ? OMColors.success : Color.white.opacity(0.1))
-                .frame(width: 32, height: 32)
-            
-            Image(systemName: task.isCompleted ? "checkmark" : "circle")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(task.isCompleted ? .white : .white.opacity(0.5))
-        }
     }
     
     private var borderColor: Color {
