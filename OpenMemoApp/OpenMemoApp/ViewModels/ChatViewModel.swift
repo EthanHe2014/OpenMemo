@@ -160,17 +160,45 @@ final class ChatViewModel {
     }
 
     /// 发消息 + 等回复（sendVoice 与 send 共用）
+    /// 说话人已识别 → 路由到该说话人专属会话（speaker_<名字>），
+    /// AI 上下文只有这个人的聊天记录，天然隔离隐私。
     private func finishSend(userText: String, sessionId: String, speaker: String? = nil) async {
+        var targetSession = sessionId
+        if let sp = speaker, !sp.isEmpty {
+            let spSession = "speaker_\(sp)"
+            if self.currentSessionId != spSession {
+                self.currentSessionId = spSession
+                self.currentTitle = "\(sp) 的聊天"
+                await self.loadSpeakerHistory(spSession)
+            }
+            targetSession = spSession
+        }
+
         // 展示时去掉 "[名字] " 前缀，speaker 单独存（气泡底部显示）；发给 AI 的仍带前缀
         let displayText = Self.extractSpeaker(from: userText)?.clean ?? userText
         self.messages.append(ChatMessage(role: .user, text: displayText, speaker: speaker))
         defer { self.isSending = false }
         do {
-            let reply = try await api.chat(message: userText, sessionId: sessionId, speaker: speaker)
+            let reply = try await api.chat(message: userText, sessionId: targetSession, speaker: speaker)
             self.messages.append(ChatMessage(role: .assistant, text: reply))
             await self.refreshSessions()
         } catch {
             self.messages.append(ChatMessage(role: .assistant, text: "连接失败：\(error.localizedDescription)"))
+        }
+    }
+
+    /// 加载某说话人专属会话的历史（新会话则为空）
+    private func loadSpeakerHistory(_ spSession: String) async {
+        do {
+            let history = try await api.getConversations(sessionId: spSession)
+            messages = history.map { msg in
+                if msg.role == .user, let parsed = Self.extractSpeaker(from: msg.text) {
+                    return ChatMessage(role: .user, text: parsed.clean, speaker: parsed.name)
+                }
+                return msg
+            }
+        } catch {
+            messages = []
         }
     }
 

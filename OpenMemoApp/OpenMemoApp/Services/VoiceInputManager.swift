@@ -415,11 +415,14 @@ final class VoiceInputManager {
         }
     }
 
-    /// 留言模式：2.5 秒没有新语音 → 自动提交
+    /// 留言模式：静音超时自动提交
+    /// - 唤醒后还没说任何话：给 4 秒思考时间再关闭（否则说完唤醒词根本来不及想）
+    /// - 已经说了话：静音 2.5 秒就发送
     private func checkSilence() {
         guard isTranscribing else { return }
         let idle = Date().timeIntervalSince(lastTextTime)
-        if idle >= 2.5 {
+        let threshold: TimeInterval = liveText.isEmpty ? 4.0 : 2.5
+        if idle >= threshold {
             let finalText = liveText.trimmingCharacters(in: .whitespacesAndNewlines)
             // Capture audio data before stopping (stop clears speakerCapture)
             let audioData = speakerCapture?.exportToData()
