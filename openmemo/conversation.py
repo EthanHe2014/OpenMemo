@@ -207,8 +207,9 @@ def _derive_content(task: dict) -> str | None:
     return None
 
 
-def _create_task_from_ai_task(task: dict, session_id: str) -> dict | None:
-    """Create a task from the AI's 'task' field. Returns the DB task or None."""
+def _create_task_from_ai_task(task: dict, session_id: str, owner: str = None) -> dict | None:
+    """Create a task from the AI's 'task' field. Returns the DB task or None.
+    owner = 说话人：任务只给 TA 看。"""
     if not task:
         return None
 
@@ -268,6 +269,7 @@ def _create_task_from_ai_task(task: dict, session_id: str) -> dict | None:
         duration_minutes=duration_minutes,
         task_type=task_type,
         meta_data=meta,
+        owner=owner,
     )
 
     if time_str:
@@ -286,7 +288,7 @@ def _create_task_from_ai_task(task: dict, session_id: str) -> dict | None:
     return db_task
 
 
-async def _schedule_appointment(appointment: dict, session_id: str):
+async def _schedule_appointment(appointment: dict, session_id: str, owner: str = None):
     """Schedule a one-shot appointment that reads the AI's words aloud."""
     if not appointment:
         return
@@ -304,6 +306,7 @@ async def _schedule_appointment(appointment: dict, session_id: str):
         priority="high",
         task_type="travel",  # generic 'read aloud at time' executor path
         meta_data={"reminder_text": read_aloud, "appointment": True},
+        owner=owner,
     )
     scheduler_mod.schedule_task(db_task["task_id"], at)
 
@@ -326,8 +329,9 @@ def _match_task_by_content(content: str, pending_first: bool = True) -> dict | N
     return pool[0]
 
 
-async def _apply_ai_action(result: dict, session_id: str):
-    """Carry out any mechanical action the AI requested (create/schedule)."""
+async def _apply_ai_action(result: dict, session_id: str, owner: str = None):
+    """Carry out any mechanical action the AI requested (create/schedule).
+    owner = 说话人：建的任务归 TA。"""
     action = result.get("action") or "chat"
 
     if action == "task_added":
@@ -341,7 +345,7 @@ async def _apply_ai_action(result: dict, session_id: str):
                 print(f"[conversation] 跳过重复任务：{t.get('content')} @ {t.get('time')}")
                 return
             seen.add(key)
-            if _create_task_from_ai_task(t, session_id):
+            if _create_task_from_ai_task(t, session_id, owner):
                 created += 1
 
         # Single task
@@ -354,24 +358,24 @@ async def _apply_ai_action(result: dict, session_id: str):
                 create_one(one)
         # 安全网：模型偶尔把任务放在 appointment 里却标成 task_added
         if created == 0 and result.get("appointment"):
-            await _schedule_appointment(result.get("appointment"), session_id)
+            await _schedule_appointment(result.get("appointment"), session_id, owner)
             created = 1
         print(f"[conversation] task_added created={created}")
         return
 
     if action == "reminder_set":
         if result.get("appointment"):
-            await _schedule_appointment(result.get("appointment"), session_id)
+            await _schedule_appointment(result.get("appointment"), session_id, owner)
             print("[conversation] reminder_set scheduled")
             return
         # 安全网：模型偶尔漏掉 appointment 却把任务放在 task/tasks 里
         created = 0
         if result.get("task"):
-            created += 1 if _create_task_from_ai_task(result.get("task"), session_id) else 0
+            created += 1 if _create_task_from_ai_task(result.get("task"), session_id, owner) else 0
         multi = result.get("tasks")
         if isinstance(multi, list):
             for one in multi:
-                created += 1 if _create_task_from_ai_task(one, session_id) else 0
+                created += 1 if _create_task_from_ai_task(one, session_id, owner) else 0
         if created:
             print(f"[conversation] reminder_set fell back to task creation ({created})")
         else:
@@ -506,7 +510,7 @@ async def process_message(session_id: str, user_message: str,
         from .tasks import TaskManager as _TM
         _before = set(t["task_id"] for t in _TM().list_tasks(limit=500))
         # Mechanical follow-through (create/schedule) — never alters the AI's words
-        await _apply_ai_action(result, session_id)
+        await _apply_ai_action(result, session_id, speaker)
         _after = set(t["task_id"] for t in _TM().list_tasks(limit=500))
         created_count = len(_after - _before)
         problems = verify_landing(user_message, reply, result.get("action") or "chat", created_count, session_id)
@@ -526,14 +530,14 @@ async def process_message(session_id: str, user_message: str,
             if not retry["error"] and retry["content"]:
                 parsed = _extract_json(retry["content"])
                 if isinstance(parsed, dict) and parsed.get("task"):
-                    await _apply_ai_action(parsed, session_id)
+                    await _apply_ai_action(parsed, session_id, speaker)
                     reply = parsed.get("reply") or reply
                     conv_manager.add_message(session_id, "assistant", reply, intent="task_added")
                     print(f"[监控] L1 自动补建：{parsed.get('task', {}).get('content')}")
     except Exception as e:
         print(f"[conversation] 兑现校验/补建出错：{e}")
         try:
-            await _apply_ai_action(result, session_id)
+            await _apply_ai_action(result, session_id, speaker)
         except Exception:
             pass
 

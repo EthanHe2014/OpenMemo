@@ -16,6 +16,11 @@ final class TaskListViewModel {
     private let api = OpenMemoAPI.shared
     private var pollTimer: Timer?
 
+    /// 当前识别的说话人（nil = 没人识别 → 任务页锁定）
+    var currentOwner: String? {
+        UserDefaults.standard.string(forKey: "siUnlockedSpeaker")
+    }
+
     /// 启动 15 秒轮询（任务 + 提醒横幅）。ViewModel 自持 Timer，避免 SwiftUI .task 被取消的问题。
     func startPolling() {
         guard pollTimer == nil else { return }
@@ -35,7 +40,7 @@ final class TaskListViewModel {
         isLoading = true
         errorMessage = nil
         do {
-            let resp = try await api.listTasks()
+            let resp = try await api.listTasks(owner: currentOwner)
             self.tasks = resp.tasks
             await pollReminders()   // 先轮询提醒（横幅）——不被本地通知同步阻塞
             await pollAlerts()      // 再轮询看护告警（横幅）

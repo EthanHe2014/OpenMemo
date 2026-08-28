@@ -96,9 +96,10 @@ final class ChatViewModel {
         return String(currentSessionId.dropFirst("speaker_".count))
     }
 
-    /// 识别出说话人 → 解锁 TA 的专属会话
+    /// 识别出说话人 → 解锁 TA 的专属会话（任务页也按这个人过滤）
     func unlockSpeaker(_ name: String) {
         unlockedSpeaker = name
+        UserDefaults.standard.set(name, forKey: "siUnlockedSpeaker")
     }
 
     /// 谁能删除这个会话：只有会话主人（已识别的对应说话人）可以。

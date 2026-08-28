@@ -24,10 +24,17 @@ final class OpenMemoAPI: @unchecked Sendable {
     }
 
     // MARK: - 任务
-    func listTasks(status: String? = nil) async throws -> TaskListResponse {
+    func listTasks(status: String? = nil, owner: String? = nil) async throws -> TaskListResponse {
         var components = URLComponents(string: "\(baseURL)/api/tasks")!
+        var items: [URLQueryItem] = []
         if let status = status {
-            components.queryItems = [URLQueryItem(name: "status", value: status)]
+            items.append(URLQueryItem(name: "status", value: status))
+        }
+        if let owner = owner {
+            items.append(URLQueryItem(name: "owner", value: owner))
+        }
+        if !items.isEmpty {
+            components.queryItems = items
         }
         let (data, _) = try await URLSession.shared.data(from: components.url!)
         return try decoder.decode(TaskListResponse.self, from: data)

@@ -34,6 +34,14 @@ struct TaskListViewNew: View {
                 // Task list
                 taskList
             }
+            // 未识别说话人 → 任务内容模糊
+            .blur(radius: taskVM.currentOwner == nil ? 20 : 0)
+            .allowsHitTesting(taskVM.currentOwner != nil)
+            
+            // 未识别说话人 → 任务页锁定
+            if taskVM.currentOwner == nil {
+                TaskLockedView()
+            }
         }
         .sheet(isPresented: $showingAddTask) {
             AddTaskView()
@@ -582,4 +590,30 @@ struct TaskCard: View {
     TaskListViewNew()
         .environment(TaskListViewModel())
         .preferredColorScheme(.dark)
+}
+
+// MARK: - 任务页锁定（还没识别出说话人）
+struct TaskLockedView: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(Color.white.opacity(0.08))
+                    .frame(width: 90, height: 90)
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 38))
+                    .foregroundStyle(.gray)
+            }
+            Text("任务已锁定")
+                .font(OMFonts.title3.weight(.semibold))
+                .foregroundStyle(.white)
+            Text("先说「小麦小麦」并说一句话\\n识别出你是谁后，这里只显示你的任务")
+                .font(OMFonts.caption)
+                .foregroundStyle(.white.opacity(0.5))
+                .multilineTextAlignment(.center)
+                .lineSpacing(4)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(OMColors.background.opacity(0.65))
+    }
 }

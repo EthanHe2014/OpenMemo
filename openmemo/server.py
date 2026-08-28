@@ -101,9 +101,9 @@ async def patch_settings(request: Request):
 
 
 @app.get("/api/tasks")
-async def list_tasks(status: str = None, limit: int = 20, include_deleted: bool = False):
-    """List all tasks（include_deleted=true 时返回回收站）"""
-    tasks = task_manager.list_tasks(status=status, limit=limit, include_deleted=include_deleted)
+async def list_tasks(status: str = None, limit: int = 20, include_deleted: bool = False, owner: str = None):
+    """List all tasks（include_deleted=true 时返回回收站；owner=说话人 时只看 TA 的）"""
+    tasks = task_manager.list_tasks(status=status, limit=limit, include_deleted=include_deleted, owner=owner)
     return {"tasks": tasks, "count": len(tasks)}
 
 

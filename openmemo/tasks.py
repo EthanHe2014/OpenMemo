@@ -30,9 +30,18 @@ def init_db():
         created_at TEXT DEFAULT (datetime('now', 'localtime')),
         updated_at TEXT DEFAULT (datetime('now', 'localtime')),
         reminder_sent INTEGER DEFAULT 0,
-        notes TEXT DEFAULT NULL
+        notes TEXT DEFAULT NULL,
+        owner TEXT DEFAULT NULL
     )
     """)
+
+    # Migration: add owner column (说话人归属)
+    try:
+        cursor.execute("ALTER TABLE tasks ADD COLUMN owner TEXT DEFAULT NULL")
+        conn.commit()
+        print("Migrated: added owner column")
+    except sqlite3.OperationalError:
+        pass
 
     # Migration: add duration_minutes column if it doesn't exist (existing DBs)
     try:
@@ -158,18 +167,20 @@ class TaskManager:
     def add_task(self, content: str, trigger_time: str = None, 
                  priority: str = "medium", is_recurring: str = None,
                  notes: str = None, duration_minutes: int = None,
-                 task_type: str = "normal", meta_data: dict = None) -> dict:
-        """Add a new task. task_type: normal/news/travel/schedule. meta_data: intent-specific JSON."""
+                 task_type: str = "normal", meta_data: dict = None,
+                 owner: str = None) -> dict:
+        """Add a new task. task_type: normal/news/travel/schedule. meta_data: intent-specific JSON.
+        owner: 说话人（谁创建的，任务只给 TA 看）。"""
         conn = get_db()
         cursor = conn.cursor()
         
         meta_json = json.dumps(meta_data, ensure_ascii=False) if meta_data else None
         cursor.execute("""
         INSERT INTO tasks (content, trigger_time, priority, is_recurring, notes, duration_minutes,
-                           task_type, meta_data)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                           task_type, meta_data, owner)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (content, trigger_time, priority, is_recurring, notes, duration_minutes,
-              task_type, meta_json))
+              task_type, meta_json, owner))
         
         task_id = cursor.lastrowid
         conn.commit()
@@ -195,27 +206,35 @@ class TaskManager:
             return d
         return None
     
-    def list_tasks(self, status: str = None, limit: int = 20, include_deleted: bool = False) -> List[dict]:
-        """List tasks, optionally filtered by status（默认排除软删除）。"""
+    def list_tasks(self, status: str = None, limit: int = 20, include_deleted: bool = False,
+                    owner: str = None) -> List[dict]:
+        """List tasks, optionally filtered by status（默认排除软删除）。
+        owner 指定时：只看 TA 的任务 + 无人认领的旧任务（owner IS NULL）。"""
         conn = get_db()
         cursor = conn.cursor()
         
         deleted_filter = "" if include_deleted else " AND deleted_at IS NULL"
+        owner_filter = ""
+        args = []
+        if owner:
+            owner_filter = " AND (owner = ? OR owner IS NULL)"
+            args.append(owner)
         if status:
+            args.append(status)
             cursor.execute(
-                f"""SELECT * FROM tasks WHERE status = ? {deleted_filter}
+                f"""SELECT * FROM tasks WHERE status = ? {deleted_filter}{owner_filter}
                    ORDER BY 
                      CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 2 END,
                      trigger_time ASC LIMIT ?""",
-                (status, limit)
+                (*args, limit)
             )
         else:
             cursor.execute(
-                f"""SELECT * FROM tasks WHERE 1=1 {deleted_filter}
+                f"""SELECT * FROM tasks WHERE 1=1 {deleted_filter}{owner_filter}
                    ORDER BY 
                      CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 2 END,
                      trigger_time ASC LIMIT ?""",
-                (limit,)
+                (*args, limit)
             )
         
         rows = cursor.fetchall()
