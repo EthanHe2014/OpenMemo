@@ -21,6 +21,7 @@ struct SpeakerEnrollmentView: View {
     @State private var timer: Timer?
     @State private var isTraining = false
     @State private var trainMessage: String?
+    @State private var speakerExistedBefore = false   // 进入录音前该名字是否已在库中（决定按钮文案）
 
     private var samplePhrase: String { "我是\(speakerName)，这是我的声音样本" }
 
@@ -204,7 +205,7 @@ struct SpeakerEnrollmentView: View {
             .background(OMColors.surface.opacity(0.8))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            // 训练按钮
+            // 训练按钮（名字已在库中 → 重新训练模型；新名字 → 训练模型）
             Button {
                 Task { await trainNow() }
             } label: {
@@ -214,10 +215,10 @@ struct SpeakerEnrollmentView: View {
                         Text("训练中… 大约 30 秒，请稍候")
                     } else if modelReady {
                         Image(systemName: "checkmark.circle.fill")
-                        Text("重新训练")
+                        Text(speakerExistedBefore ? "重新训练模型" : "训练模型")
                     } else {
                         Image(systemName: "cpu")
-                        Text("开始训练")
+                        Text(speakerExistedBefore ? "重新训练模型" : "训练模型")
                     }
                 }
                 .font(OMFonts.subheadline.weight(.semibold))
@@ -325,6 +326,8 @@ struct SpeakerEnrollmentView: View {
     private func goNext() {
         stopTimer()
         if step == 1 {
+            // 记录这个名字是否已在库中（决定训练按钮文案：重新训练模型 / 训练模型）
+            speakerExistedBefore = SpeakerRecognizer.shared.enrolledSpeakers.contains(speakerName)
             step = 2
             return
         }
