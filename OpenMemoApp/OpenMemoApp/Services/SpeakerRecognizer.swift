@@ -59,20 +59,33 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
     
     // MARK: - Model Management
     
-    /// Load SpeakerModel.mlmodel from app bundle
+    /// Load SpeakerModel.mlmodel —— 优先 App 内置（旧流程），
+    /// 其次 Documents 里 App 内训练生成的模型（新流程，无需 Xcode）
     private func loadModel() {
-        guard let modelURL = Bundle.main.url(forResource: "SpeakerModel", withExtension: "mlmodel"),
-              let model = try? MLModel(contentsOf: modelURL) else {
-            print("⚠️ SpeakerModel.mlmodel not found")
+        // 1) App bundle（开发者手动拖入的模型）
+        if let modelURL = Bundle.main.url(forResource: "SpeakerModel", withExtension: "mlmodel"),
+           let model = try? MLModel(contentsOf: modelURL) {
+            apply(model: model)
+            print("✅ SpeakerRecognizer: Model loaded (bundle)")
             return
         }
-        
+        // 2) Documents 里 App 内训练出来的模型
+        if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+            let pkg = docs.appendingPathComponent("SpeakerModel.mlmodel")
+            if FileManager.default.fileExists(atPath: pkg.path),
+               let compiled = try? MLModel.compileModel(at: pkg),
+               let model = try? MLModel(contentsOf: compiled) {
+                apply(model: model)
+                print("✅ SpeakerRecognizer: Model loaded (documents)")
+                return
+            }
+        }
+        print("⚠️ SpeakerModel.mlmodel not found")
+    }
+
+    private func apply(model: MLModel) {
         mlModel = model
-        
-        // Create sound classification request
         classificationRequest = try? SNClassifySoundRequest(mlModel: model)
-        
-        print("✅ SpeakerRecognizer: Model loaded")
     }
     
     /// Load enrolled speakers from UserDefaults
@@ -87,6 +100,60 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
     private func saveEnrolledSpeakers() {
         UserDefaults.standard.set(enrolledSpeakers, forKey: "enrolledSpeakers")
         UserDefaults.standard.set(isModelReady, forKey: "speakerModelReady")
+    }
+
+    // MARK: - In-app training (no terminal / Xcode needed)
+
+    /// 在 App 内用 Create ML 训练说话人模型（macOS/Catalyst 支持 CreateML）。
+    /// 输入：Documents/speaker_samples/<名字>/ 下的样本；
+    /// 输出：Documents/SpeakerModel.mlmodel（编译后直接加载，立即可用）。
+    func trainModelInApp() async -> Result<String, Error> {
+        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            return .failure(NSError(domain: "SpeakerRecognizer", code: 3,
+                                    userInfo: [NSLocalizedDescriptionKey: "无法访问文档目录"]))
+        }
+        let samplesDir = docs.appendingPathComponent("speaker_samples", isDirectory: true)
+        Self.logToFile("train: samples at \(samplesDir.path)")
+
+        // 校验：至少有一个说话人目录且含样本文件
+        let fm = FileManager.default
+        guard let dirs = try? fm.contentsOfDirectory(at: samplesDir, includingPropertiesForKeys: nil,
+                                                     options: [.skipsHiddenFiles]) else {
+            return .failure(NSError(domain: "SpeakerRecognizer", code: 4,
+                                    userInfo: [NSLocalizedDescriptionKey: "没有找到样本目录"]))
+        }
+        var total = 0
+        for d in dirs where d.hasDirectoryPath {
+            total += (try? fm.contentsOfDirectory(atPath: d.path))?.count ?? 0
+        }
+        guard total > 0 else {
+            return .failure(NSError(domain: "SpeakerRecognizer", code: 5,
+                                    userInfo: [NSLocalizedDescriptionKey: "没有样本可训练，请先录音"]))
+        }
+        Self.logToFile("train: \(total) samples, \(dirs.filter(\.hasDirectoryPath).count) speakers")
+
+        let outPackage = docs.appendingPathComponent("SpeakerModel.mlmodel")
+
+        do {
+            // Create ML 训练很重 → 后台线程跑，绝不卡主线程（只回 URL，模型在 MainActor 上加载）
+            let compiledURL = try await Task.detached(priority: .userInitiated) { () -> URL in
+                let classifier = try MLSoundClassifier(trainingData: .labeledDirectories(at: samplesDir))
+                let metadata = MLModelMetadata(
+                    author: "OpenMemo",
+                    shortDescription: "OpenMemo 说话人识别（App 内训练）",
+                    version: "1.0"
+                )
+                try classifier.write(to: outPackage, metadata: metadata)
+                return try MLModel.compileModel(at: outPackage)
+            }.value
+            let model = try MLModel(contentsOf: compiledURL)
+            apply(model: model)
+            Self.logToFile("train: success -> \(outPackage.path)")
+            return .success("训练完成，模型已就绪")
+        } catch {
+            Self.logToFile("train: FAILED \(error)")
+            return .failure(error)
+        }
     }
     
     // MARK: - Manual sample recording (wizard: tap start → speak → tap stop)

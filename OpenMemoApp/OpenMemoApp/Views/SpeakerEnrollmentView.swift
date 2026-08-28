@@ -19,6 +19,8 @@ struct SpeakerEnrollmentView: View {
     @State private var errorMessage: String?
     @State private var modelReady = false
     @State private var timer: Timer?
+    @State private var isTraining = false
+    @State private var trainMessage: String?
 
     private var samplePhrase: String { "我是\(speakerName)，这是我的声音样本" }
 
@@ -170,41 +172,89 @@ struct SpeakerEnrollmentView: View {
         .darkCard()
     }
 
-    // MARK: - 第 5 页：训练模型
+    // MARK: - 第 5 页：训练模型（App 内完成，无需终端 / Xcode）
 
     private var trainingPage: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 8) {
                 Image(systemName: modelReady ? "checkmark.circle.fill" : "cpu")
                     .foregroundStyle(modelReady ? OMColors.success : OMColors.info)
-                Text(modelReady ? "模型已就绪" : "训练模型（在 Mac 上做一次）")
+                Text(modelReady ? "模型已就绪" : "训练模型")
                     .font(OMFonts.title3.weight(.semibold))
                     .foregroundStyle(.white)
             }
-            VStack(alignment: .leading, spacing: 10) {
-                trainStep("1", "把样本从 App 里导出到 Mac 的 speaker_samples 文件夹")
-                trainStep("2", "打开终端，运行 tools/train_speaker.swift")
-                trainStep("3", "等训练完成，生成 SpeakerModel.mlmodel")
-                trainStep("4", "把模型拖进 Xcode 工程（勾上 target membership）")
-                trainStep("5", "重新编译运行 App，本页会显示「模型已就绪」")
-            }
-            Text("样本已存：\(SpeakerRecognizer.shared.sampleCount(forSpeaker: speakerName)) 个")
+            Text("现在就能在 App 里训练，不用打开终端，也不用 Xcode。")
                 .font(OMFonts.caption)
                 .foregroundStyle(.white.opacity(0.6))
+
+            // 说话人 + 样本数一览
+            VStack(spacing: 6) {
+                ForEach(SpeakerRecognizer.shared.enrolledSpeakers, id: \.self) { name in
+                    HStack {
+                        Image(systemName: "person.circle.fill").foregroundStyle(OMColors.info)
+                        Text(name).font(OMFonts.caption).foregroundStyle(.white)
+                        Spacer()
+                        Text("\(SpeakerRecognizer.shared.sampleCount(forSpeaker: name)) 个样本")
+                            .font(OMFonts.caption)
+                            .foregroundStyle(.white.opacity(0.5))
+                    }
+                }
+            }
+            .padding()
+            .background(OMColors.surface.opacity(0.8))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            // 训练按钮
+            Button {
+                Task { await trainNow() }
+            } label: {
+                HStack(spacing: 8) {
+                    if isTraining {
+                        ProgressView().tint(.white)
+                        Text("训练中… 大约 30 秒，请稍候")
+                    } else if modelReady {
+                        Image(systemName: "checkmark.circle.fill")
+                        Text("重新训练")
+                    } else {
+                        Image(systemName: "cpu")
+                        Text("开始训练")
+                    }
+                }
+                .font(OMFonts.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(OMColors.primaryGradient)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(isTraining)
+
+            if let msg = trainMessage {
+                Text(msg)
+                    .font(OMFonts.caption)
+                    .foregroundStyle(modelReady ? OMColors.success : OMColors.error)
+            }
+
+            Text("样本存在 Documents/speaker_samples/，随时可以重录重训。")
+                .font(OMFonts.caption2)
+                .foregroundStyle(.white.opacity(0.4))
         }
         .padding()
         .darkCard()
     }
 
-    private func trainStep(_ n: String, _ text: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Text(n)
-                .font(OMFonts.caption.weight(.bold))
-                .foregroundStyle(OMColors.info)
-                .frame(width: 18, height: 18)
-                .background(OMColors.info.opacity(0.15))
-                .clipShape(Circle())
-            Text(text).font(OMFonts.caption).foregroundStyle(.white.opacity(0.75)).lineSpacing(3)
+    private func trainNow() async {
+        isTraining = true
+        trainMessage = nil
+        let result = await SpeakerRecognizer.shared.trainModelInApp()
+        isTraining = false
+        modelReady = SpeakerRecognizer.shared.isModelReady
+        switch result {
+        case .success(let msg):
+            trainMessage = msg
+        case .failure(let err):
+            trainMessage = "训练失败：\(err.localizedDescription)"
         }
     }
 
@@ -223,7 +273,7 @@ struct SpeakerEnrollmentView: View {
                 infoRow("说话人", speakerName)
                 infoRow("已录样本", "\(SpeakerRecognizer.shared.sampleCount(forSpeaker: speakerName)) 个")
             }
-            Text("下一步：按第 5 页的步骤训练模型，训练完模型就绪，聊天时会自动识别是谁在说话")
+            Text("下一步：回到聊天页，说句话试试 —— 如果模型已就绪，就会自动识别是谁在说话")
                 .font(OMFonts.caption)
                 .foregroundStyle(.white.opacity(0.6))
                 .multilineTextAlignment(.center)
