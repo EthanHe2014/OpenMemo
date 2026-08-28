@@ -545,4 +545,4 @@ async def process_message(session_id: str, user_message: str,
     if speak_response:
         await speak_safe(reply)
 
-    return reply, unlock_speaker
+    return reply
