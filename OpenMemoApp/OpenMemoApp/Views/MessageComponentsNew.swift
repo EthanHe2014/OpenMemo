@@ -291,7 +291,8 @@ struct SidebarViewNew: View {
                     SessionRow(
                         session: session,
                         isSelected: session.sessionId == chatVM.currentSessionId,
-                        isLocked: chatVM.isLockedSession(session.sessionId)
+                        isLocked: chatVM.isLockedSession(session.sessionId),
+                        showDelete: chatVM.canDeleteSession(session.sessionId)
                     ) {
                         Task {
                             await chatVM.selectSession(session)
@@ -323,6 +324,7 @@ struct SessionRow: View {
     let session: ChatSession
     let isSelected: Bool
     var isLocked: Bool = false
+    var showDelete: Bool = true
     let onSelect: () -> Void
     let onRename: () -> Void
     let onDelete: () -> Void
@@ -359,7 +361,7 @@ struct SessionRow: View {
                 
                 Spacer()
                 
-                // 重命名 + 删除按钮
+                // 重命名 + 删除按钮（删除只有会话主人可见）
                 HStack(spacing: 4) {
                     Button {
                         onRename()
@@ -374,18 +376,20 @@ struct SessionRow: View {
                     }
                     .buttonStyle(.plain)
                     
-                    Button {
-                        onDelete()
-                    } label: {
-                        Image(systemName: "trash")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.7))
-                            .frame(width: 26, height: 26)
-                            .background(Color.white.opacity(0.08))
-                            .clipShape(Circle())
-                            .hoverGlow(color: OMColors.danger)   // 悬停红色发光
+                    if showDelete {
+                        Button {
+                            onDelete()
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.7))
+                                .frame(width: 26, height: 26)
+                                .background(Color.white.opacity(0.08))
+                                .clipShape(Circle())
+                                .hoverGlow(color: OMColors.danger)   // 悬停红色发光
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
                 
                 // Selection indicator

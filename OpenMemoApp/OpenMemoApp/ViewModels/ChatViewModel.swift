@@ -95,6 +95,17 @@ final class ChatViewModel {
         unlockedSpeaker = name
     }
 
+    /// 谁能删除这个会话：只有会话主人（已识别的对应说话人）可以。
+    /// 未识别出任何人时，谁都不能删。
+    func canDeleteSession(_ sessionId: String) -> Bool {
+        guard let unlocked = unlockedSpeaker, !sessionId.isEmpty else { return false }
+        if sessionId.hasPrefix("speaker_") {
+            return sessionId == "speaker_\(unlocked)"
+        }
+        // 匿名会话：有已识别的用户在场时允许清理
+        return true
+    }
+
     /// 删除服务端会话并从侧边栏移除。
     func deleteSession(_ session: ChatSession) async {
         do {
@@ -129,6 +140,8 @@ final class ChatViewModel {
     /// 删除当前会话（导航栏删除按钮用）
     func deleteCurrentChat() async {
         let sid = currentSessionId
+        // 只有会话主人能删
+        guard canDeleteSession(sid) else { return }
         guard !sid.isEmpty else {
             newSession()
             return
