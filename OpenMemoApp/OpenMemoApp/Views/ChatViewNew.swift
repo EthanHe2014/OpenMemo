@@ -28,6 +28,15 @@ struct ChatViewNew: View {
                 // Input area
                 inputSection
             }
+            // 别人的专属会话 → 内容模糊 + 锁屏遮罩
+            .blur(radius: chatVM.isLockedChat ? 25 : 0)
+            .allowsHitTesting(!chatVM.isLockedChat)
+            .animation(.easeInOut(duration: 0.3), value: chatVM.isLockedChat)
+            
+            // 锁屏：别人的私密聊天
+            if chatVM.isLockedChat {
+                LockedChatView(speakerName: chatVM.lockedSpeakerName)
+            }
             
             // Sidebar overlay
             if showSidebar {
@@ -337,6 +346,36 @@ struct ChatViewNew: View {
     
     private var effectiveInputText: String {
         voice.isTranscribing ? voice.liveText : chatVM.inputText
+    }
+}
+
+// MARK: - Locked Chat View (别人的专属会话)
+struct LockedChatView: View {
+    let speakerName: String
+
+    var body: some View {
+        VStack(spacing: 18) {
+            ZStack {
+                Circle()
+                    .fill(Color.white.opacity(0.08))
+                    .frame(width: 100, height: 100)
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 42))
+                    .foregroundStyle(.gray)
+            }
+
+            Text("「\(speakerName)」的私密聊天")
+                .font(OMFonts.title3.weight(.semibold))
+                .foregroundStyle(.white)
+
+            Text("这是 \(speakerName) 的个人聊天记录\n只有 TA 本人可以打开")
+                .font(OMFonts.caption)
+                .foregroundStyle(.white.opacity(0.5))
+                .multilineTextAlignment(.center)
+                .lineSpacing(4)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(OMColors.background.opacity(0.65))
     }
 }
 

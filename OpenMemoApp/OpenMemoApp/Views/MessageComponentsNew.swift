@@ -270,7 +270,8 @@ struct SidebarViewNew: View {
                 ForEach(chatVM.sessions) { session in
                     SessionRow(
                         session: session,
-                        isSelected: session.sessionId == chatVM.currentSessionId
+                        isSelected: session.sessionId == chatVM.currentSessionId,
+                        isLocked: chatVM.isLockedSession(session.sessionId)
                     ) {
                         Task {
                             await chatVM.selectSession(session)
@@ -299,6 +300,7 @@ struct SidebarViewNew: View {
 struct SessionRow: View {
     let session: ChatSession
     let isSelected: Bool
+    var isLocked: Bool = false
     let onSelect: () -> Void
     let onDelete: () -> Void
     
@@ -313,7 +315,7 @@ struct SessionRow: View {
                         .fill(isSelected ? AnyShapeStyle(OMColors.primaryGradient) : AnyShapeStyle(Color.white.opacity(0.1)))
                         .frame(width: 40, height: 40)
                     
-                    Image(systemName: "bubble.left.fill")
+                    Image(systemName: isLocked ? "lock.fill" : "bubble.left.fill")
                         .font(.system(size: 16))
                         .foregroundStyle(isSelected ? .white : .white.opacity(0.7))
                 }

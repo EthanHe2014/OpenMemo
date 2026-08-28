@@ -61,6 +61,27 @@ final class ChatViewModel {
         await loadHistory(sessionId: session.sessionId)
     }
 
+    // MARK: - 说话人专属会话锁
+
+    /// 房主名字：只有 TA 的专属会话能打开（其它人的会话一律上锁）
+    var ownerName: String { UserDefaults.standard.string(forKey: "siOwnerName") ?? "Ethan" }
+
+    /// 该会话是否是别人的专属会话（需上锁）
+    func isLockedSession(_ sessionId: String) -> Bool {
+        guard sessionId.hasPrefix("speaker_") else { return false }
+        let name = String(sessionId.dropFirst("speaker_".count))
+        return name != ownerName
+    }
+
+    /// 当前会话是否被锁
+    var isLockedChat: Bool { isLockedSession(currentSessionId) }
+
+    /// 当前锁定会话的说话人名字
+    var lockedSpeakerName: String {
+        guard currentSessionId.hasPrefix("speaker_") else { return "" }
+        return String(currentSessionId.dropFirst("speaker_".count))
+    }
+
     /// 删除服务端会话并从侧边栏移除。
     func deleteSession(_ session: ChatSession) async {
         do {
@@ -80,6 +101,7 @@ final class ChatViewModel {
     func sendVoice(text: String, audioData: Data?) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !isSending else { return }
+        if isLockedChat { return }   // 别人的专属会话不能发消息
 
         if currentSessionId.isEmpty {
             currentSessionId = "ios_" + UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "")
@@ -256,6 +278,7 @@ final class ChatViewModel {
     func send() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isSending else { return }
+        if isLockedChat { return }   // 别人的专属会话不能发消息
 
         // 新会话还没有服务端 session id -> 首次发送时自动生成一个新的。
         if currentSessionId.isEmpty {
