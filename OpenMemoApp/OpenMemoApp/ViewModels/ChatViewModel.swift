@@ -196,9 +196,11 @@ final class ChatViewModel {
             Task {
                 let (identified, confidence) = await Self.identifySpeaker(from: data)
                 Self.logSI("identify result: \(identified ?? "nil") conf=\(confidence ?? -1) (audio \(data.count)B, model ready)")
+                // 置信度太低 → 不算识别（避免把垃圾结果当说话人）
+                let accepted = (identified != nil && (confidence ?? 0) >= 0.6) ? identified : nil
                 // 密码验证过的说话人优先；高置信度识别到别人 → 自动让位
-                var finalSpeaker = verifiedSpeaker ?? identified
-                if let id = identified, let conf = confidence, conf >= 0.85, id != verifiedSpeaker {
+                var finalSpeaker = verifiedSpeaker ?? accepted
+                if let id = accepted, let conf = confidence, conf >= 0.85, id != verifiedSpeaker {
                     verifiedSpeaker = nil
                     finalSpeaker = id
                 }

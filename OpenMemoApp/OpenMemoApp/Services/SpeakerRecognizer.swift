@@ -136,6 +136,20 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
         }
         Self.logToFile("train: \(total) samples, \(speakerDirs.count) speakers")
 
+        // 清理损坏/空文件（28 字节的空录音会污染训练，导致模型偏向某个说话人）
+        var cleaned = 0
+        for d in speakerDirs {
+            if let files = try? fm.contentsOfDirectory(at: d, includingPropertiesForKeys: [.fileSizeKey]) {
+                for f in files where (try? f.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) ?? 0 < 1000 {
+                    try? fm.removeItem(at: f)
+                    cleaned += 1
+                }
+            }
+        }
+        if cleaned > 0 {
+            Self.logToFile("train: cleaned \(cleaned) empty/broken samples")
+        }
+
         let outPackage = docs.appendingPathComponent("SpeakerModel.mlmodel")
 
         do {
@@ -418,6 +432,11 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
         let speaker = top.identifier
         let confidence = top.confidence
         Task { @MainActor in
+            // 取所有分析窗口里置信度最高的那次，而不是最后一次
+            // （最后一次可能是结尾静音/噪音，会覆盖掉真正的识别结果）
+            if let cur = self.lastResult, cur.confidence >= confidence {
+                return
+            }
             self.lastResult = (speaker, confidence)
         }
     }
