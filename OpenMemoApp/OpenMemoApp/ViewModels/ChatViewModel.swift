@@ -96,6 +96,39 @@ final class ChatViewModel {
         }
     }
 
+    /// 重命名会话（自定义标题）
+    func renameSession(_ session: ChatSession, to newTitle: String) async {
+        let title = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return }
+        do {
+            _ = try await api.renameSession(session.sessionId, newTitle: title)
+            if let idx = sessions.firstIndex(where: { $0.sessionId == session.sessionId }) {
+                sessions[idx].title = title
+            }
+            if currentSessionId == session.sessionId {
+                currentTitle = title
+            }
+        } catch {
+            errorMessage = "重命名失败：\(error.localizedDescription)"
+        }
+    }
+
+    /// 删除当前会话（导航栏删除按钮用）
+    func deleteCurrentChat() async {
+        let sid = currentSessionId
+        guard !sid.isEmpty else {
+            newSession()
+            return
+        }
+        do {
+            _ = try await api.deleteSession(sid)
+        } catch {
+            errorMessage = "删除失败：\(error.localizedDescription)"
+        }
+        sessions.removeAll { $0.sessionId == sid }
+        newSession()
+    }
+
     /// Send voice message with speaker identification.
     /// 模型就绪 + 有录音数据 → 自动识别说话人（无需手动选）。
     func sendVoice(text: String, audioData: Data?) {

@@ -114,6 +114,16 @@ final class OpenMemoAPI: @unchecked Sendable {
         return resp.success
     }
 
+    func renameSession(_ id: String, newTitle: String) async throws -> Bool {
+        var req = URLRequest(url: URL(string: "\(baseURL)/api/sessions/\(id)")!)
+        req.httpMethod = "PATCH"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONEncoder().encode(["title": newTitle])
+        let (data, _) = try await URLSession.shared.data(for: req)
+        let resp = try decoder.decode(RenameSessionResponse.self, from: data)
+        return resp.success
+    }
+
     func getConversations(sessionId: String) async throws -> [ChatMessage] {
         var comps = URLComponents(string: "\(baseURL)/api/conversations/\(sessionId)")!
         comps.queryItems = [URLQueryItem(name: "limit", value: "100")]

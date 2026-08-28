@@ -203,14 +203,15 @@ struct OMBackground: View {
 struct HoverGlow: ViewModifier {
     @State private var isHovered = false
     var cornerRadius: CGFloat = 14
+    var color: Color = .white
     
     func body(content: Content) -> some View {
         content
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(isHovered ? Color.white.opacity(0.35) : Color.clear, lineWidth: 1)
+                    .stroke(isHovered ? color.opacity(0.45) : Color.clear, lineWidth: 1)
             )
-            .shadow(color: isHovered ? .white.opacity(0.2) : .clear, radius: isHovered ? 10 : 0)
+            .shadow(color: isHovered ? color.opacity(0.35) : .clear, radius: isHovered ? 10 : 0)
             .brightness(isHovered ? 0.06 : 0)
             .scaleEffect(isHovered ? 1.02 : 1)
             .animation(.easeInOut(duration: 0.15), value: isHovered)
@@ -224,6 +225,11 @@ extension View {
     /// Soft white glow while the mouse hovers over this element
     func hoverGlow(cornerRadius: CGFloat = 14) -> some View {
         modifier(HoverGlow(cornerRadius: cornerRadius))
+    }
+
+    /// Colored glow on hover（删除按钮用红色）
+    func hoverGlow(color: Color, cornerRadius: CGFloat = 14) -> some View {
+        modifier(HoverGlow(cornerRadius: cornerRadius, color: color))
     }
 }
 

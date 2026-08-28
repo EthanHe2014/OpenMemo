@@ -65,7 +65,15 @@ def init_db():
 
     
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS conversations (
+        CREATE TABLE IF NOT EXISTS session_titles (
+        session_id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        updated_at TEXT DEFAULT (datetime('now', 'localtime'))
+    )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS conversations (
         conv_id INTEGER PRIMARY KEY AUTOINCREMENT,
         session_id TEXT NOT NULL,
         role TEXT NOT NULL,
@@ -623,14 +631,36 @@ class ConversationManager:
         rows = cursor.fetchall()
         conn.close()
         sessions = []
+        conn2 = get_db()
+        cursor2 = conn2.cursor()
         for row in rows:
+            custom = cursor2.execute("SELECT title FROM session_titles WHERE session_id = ?",
+                                     (row["session_id"],)).fetchone()
+            title = (custom["title"] if custom else (row["first_user_msg"] or "New chat"))[:40]
             sessions.append({
                 "session_id": row["session_id"],
-                "title": (row["first_user_msg"] or "New chat")[:40],
+                "title": title,
                 "last_at": row["last_at"],
                 "msg_count": row["msg_count"],
             })
+        conn2.close()
         return sessions
+
+    def rename_session(self, session_id: str, title: str):
+        """Set (or update) a custom title for a session."""
+        title = (title or "").strip()[:40]
+        if not title:
+            return False
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO session_titles (session_id, title) VALUES (?, ?)
+            ON CONFLICT(session_id) DO UPDATE SET title = excluded.title,
+                                                  updated_at = datetime('now', 'localtime')
+        """, (session_id, title))
+        conn.commit()
+        conn.close()
+        return True
 
     def delete_session(self, session_id: str):
         """Delete a session and all its conversations + pending slots."""

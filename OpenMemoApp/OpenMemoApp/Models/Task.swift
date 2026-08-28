@@ -282,6 +282,10 @@ struct DeleteSessionResponse: Codable {
     let deleted: String
 }
 
+struct RenameSessionResponse: Codable {
+    let success: Bool
+}
+
 struct HealthResponse: Codable {
     let name: String
     let version: String

@@ -108,6 +108,18 @@ struct ChatViewNew: View {
                     .glass(cornerRadius: 14)
                     .hoverGlow()
             }
+            
+            // 删除当前会话（悬停红色发光）
+            Button {
+                Task { await chatVM.deleteCurrentChat() }
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .glass(cornerRadius: 14)
+                    .hoverGlow(color: OMColors.error)
+            }
         }
         .padding(.horizontal)
         .padding(.vertical, 8)

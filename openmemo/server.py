@@ -277,6 +277,15 @@ async def list_sessions():
     return {"sessions": sessions, "count": len(sessions)}
 
 
+@app.patch("/api/sessions/{session_id}")
+async def rename_session(session_id: str, request: Request):
+    """Rename a session (custom title)."""
+    body = await request.json()
+    title = body.get("title", "")
+    ok = conv_manager.rename_session(session_id, title)
+    return {"success": ok, "session_id": session_id, "title": title}
+
+
 @app.delete("/api/sessions/{session_id}")
 async def delete_session(session_id: str):
     """Delete a session and all its history."""

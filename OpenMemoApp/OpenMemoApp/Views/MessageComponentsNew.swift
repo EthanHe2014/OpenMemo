@@ -173,6 +173,8 @@ struct SidebarViewNew: View {
     @Environment(ChatViewModel.self) private var chatVM
     let onClose: () -> Void
     @State private var isVisible = false
+    @State private var renameTarget: ChatSession?
+    @State private var renameText = ""
     
     var body: some View {
         ZStack(alignment: .leading) {
@@ -240,6 +242,24 @@ struct SidebarViewNew: View {
             .animation(OMAnimations.spring, value: isVisible)
         }
         .onAppear { isVisible = true }
+        .alert("重命名会话", isPresented: Binding(
+            get: { renameTarget != nil },
+            set: { if !$0 { renameTarget = nil } }
+        )) {
+            TextField("新名字", text: $renameText)
+            Button("取消", role: .cancel) { renameTarget = nil }
+            Button("确定") {
+                if let target = renameTarget {
+                    Task { await chatVM.renameSession(target, to: renameText) }
+                }
+                renameTarget = nil
+            }
+        } message: {
+            Text("输入这个会话的新名字")
+        }
+        .onChange(of: renameTarget) { _, newValue in
+            if let s = newValue { renameText = s.title }
+        }
     }
     
     private var emptyState: some View {
@@ -277,6 +297,8 @@ struct SidebarViewNew: View {
                             await chatVM.selectSession(session)
                             close()
                         }
+                    } onRename: {
+                        renameTarget = session
                     } onDelete: {
                         Task { await chatVM.deleteSession(session) }
                     }
@@ -302,6 +324,7 @@ struct SessionRow: View {
     let isSelected: Bool
     var isLocked: Bool = false
     let onSelect: () -> Void
+    let onRename: () -> Void
     let onDelete: () -> Void
     
     @State private var showingDelete = false
@@ -335,6 +358,35 @@ struct SessionRow: View {
                 }
                 
                 Spacer()
+                
+                // 重命名 + 删除按钮
+                HStack(spacing: 4) {
+                    Button {
+                        onRename()
+                    } label: {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.7))
+                            .frame(width: 26, height: 26)
+                            .background(Color.white.opacity(0.08))
+                            .clipShape(Circle())
+                            .hoverGlow()
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Button {
+                        onDelete()
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.7))
+                            .frame(width: 26, height: 26)
+                            .background(Color.white.opacity(0.08))
+                            .clipShape(Circle())
+                            .hoverGlow(color: OMColors.error)   // 悬停红色发光
+                    }
+                    .buttonStyle(.plain)
+                }
                 
                 // Selection indicator
                 if isSelected {
