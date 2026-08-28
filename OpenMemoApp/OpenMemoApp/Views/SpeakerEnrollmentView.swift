@@ -14,7 +14,6 @@ struct SpeakerEnrollmentView: View {
 
     /// 录音时建议说的话（固定句式，训练效果最好）
     private let samplePhrase = "我是{名字}，这是我的声音样本"
-
     var body: some View {
         NavigationStack {
             ZStack {
@@ -59,8 +58,7 @@ struct SpeakerEnrollmentView: View {
                  ? "可以识别 \(samples.count) 位说话人"
                  : "先录样本（下面第 1~2 步），再在 Mac 上训练模型（第 3 步）")
                 .font(OMFonts.caption)
-                .foregroundStyle(.white.opacity(0.65))
-        }
+                .foregroundStyle(.white.opacity(0.65))        }
         .padding()
         .darkCard()
     }
@@ -69,7 +67,7 @@ struct SpeakerEnrollmentView: View {
 
     private var addSpeakerSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("1️⃣ 添加说话人并录音")
+            Text("1. 添加说话人并录音")
                 .font(OMFonts.title3.weight(.semibold))
                 .foregroundStyle(.white)
 
@@ -111,7 +109,7 @@ struct SpeakerEnrollmentView: View {
                     .foregroundStyle(OMColors.error)
             }
             if let done = lastRecorded {
-                Label("已保存 \(done) 的样本 ✅ 建议再录 2 次（共 3 个样本）", systemImage: "checkmark.circle.fill")
+                Label("已保存 \(done) 的样本 — 建议再录 2 次（共 3 个样本）", systemImage: "checkmark.circle.fill")
                     .font(OMFonts.caption)
                     .foregroundStyle(OMColors.success)
             }
@@ -128,7 +126,7 @@ struct SpeakerEnrollmentView: View {
                 .font(OMFonts.title3.weight(.semibold))
                 .foregroundStyle(.white)
             if samples.isEmpty {
-                Text("暂无说话人 — 按上面第 1️⃣ 步录一个吧")
+                Text("暂无说话人 — 按上面第 1 步录一个吧")
                     .font(OMFonts.body)
                     .foregroundStyle(.white.opacity(0.5))
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -139,7 +137,7 @@ struct SpeakerEnrollmentView: View {
                         Image(systemName: "person.circle.fill").font(.title3).foregroundStyle(OMColors.info)
                         Text(name).font(OMFonts.body).foregroundStyle(.white)
                         Spacer()
-                        Text("\(count) 个样本\(count >= 3 ? " ✓" : "")")
+                        Text("\(count) 个样本")
                             .font(OMFonts.caption)
                             .foregroundStyle(count >= 3 ? OMColors.success : .white.opacity(0.5))
                     }
@@ -157,14 +155,14 @@ struct SpeakerEnrollmentView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "book.fill").font(.title3).foregroundStyle(OMColors.info)
-                Text("2️⃣ 训练模型（在 Mac 上，一次性）").font(OMFonts.title3.weight(.semibold)).foregroundStyle(.white)
+                Text("2. 训练模型（在 Mac 上，一次性）").font(OMFonts.title3.weight(.semibold)).foregroundStyle(.white)
             }
             VStack(alignment: .leading, spacing: 8) {
-                guideStep("①", "每人至少录 3 个样本（上面点 3 次麦克风，每次说同一句话）")
-                guideStep("②", "把 App 的样本导出到 Mac：Documents/speaker_samples/")
-                guideStep("③", "运行训练脚本：tools/train_speaker.swift")
-                guideStep("④", "把生成的 SpeakerModel.mlmodel 拖进 Xcode 工程")
-                guideStep("⑤", "重新编译运行 App → 模型就绪，聊天时自动识别说话人")
+                guideStep("1", "每人至少录 3 个样本（上面点 3 次麦克风，每次说同一句话）")
+                guideStep("2", "把 App 的样本导出到 Mac：Documents/speaker_samples/")
+                guideStep("3", "运行训练脚本：tools/train_speaker.swift")
+                guideStep("4", "把生成的 SpeakerModel.mlmodel 拖进 Xcode 工程")
+                guideStep("5", "重新编译运行 App → 模型就绪，聊天时自动识别说话人")
             }
         }
         .padding()
