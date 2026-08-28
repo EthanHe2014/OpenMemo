@@ -196,7 +196,7 @@ struct SidebarViewNew: View {
                     
                     Button {
                         Task {
-                            await chatVM.startFresh()
+                            await chatVM.startNewChat()
                             close()
                         }
                     } label: {

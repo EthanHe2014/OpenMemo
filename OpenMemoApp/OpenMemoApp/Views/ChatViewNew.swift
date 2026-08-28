@@ -123,7 +123,7 @@ struct ChatViewNew: View {
             Spacer()
             
             Button {
-                Task { await chatVM.startFresh() }
+                Task { await chatVM.startNewChat() }
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 20, weight: .semibold))

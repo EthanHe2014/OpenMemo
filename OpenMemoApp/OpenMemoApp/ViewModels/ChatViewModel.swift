@@ -44,6 +44,12 @@ final class ChatViewModel {
         currentTitle = "新对话"
     }
 
+    /// 新建聊天（+ 按钮用）：任何时候都能开新对话
+    func startNewChat() async {
+        newSession()
+        await refreshSessions()
+    }
+
     /// 新建一个本地聊天。旧的仍保留在侧边栏（服务端）。
     func newSession() {
         currentSessionId = ""    // empty => app uses a transient id for this new chat
