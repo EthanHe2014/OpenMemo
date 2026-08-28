@@ -1,7 +1,9 @@
 import Foundation
 import AVFoundation
 import SoundAnalysis
+#if canImport(CreateML)
 import CreateML
+#endif
 
 /// 录音文件盒子：tap 回调线程里懒创建 + 写入（音频线程安全）
 final class RecorderBox: @unchecked Sendable {
@@ -104,6 +106,7 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
 
     // MARK: - In-app training (no terminal / Xcode needed)
 
+#if canImport(CreateML)
     /// 在 App 内用 Create ML 训练说话人模型（macOS/Catalyst 支持 CreateML）。
     /// 输入：Documents/speaker_samples/<名字>/ 下的样本；
     /// 输出：Documents/SpeakerModel.mlmodel（编译后直接加载，立即可用）。
@@ -161,6 +164,16 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
         }
     }
 
+
+#else
+    /// 训练仅支持 macOS / Catalyst（Create ML 不适用于 iOS）
+    func trainModelInApp() async -> Result<String, Error> {
+        return .failure(NSError(domain: "SpeakerRecognizer", code: 9,
+                                userInfo: [NSLocalizedDescriptionKey: "训练功能仅支持 Mac 版"]))
+    }
+#endif
+
+#if canImport(CreateML)
     /// 生成合成“背景噪音”类别（Create ML 需要至少两类才能训练）
     nonisolated static func generateBackgroundClass(in samplesDir: URL) throws {
         let bgDir = samplesDir.appendingPathComponent("__background__", isDirectory: true)
@@ -334,6 +347,9 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
         return name.components(separatedBy: bad).joined(separator: "_")
     }
     
+
+#endif
+
     // MARK: - Speaker Identification
     
     /// Identify speaker in audio file
