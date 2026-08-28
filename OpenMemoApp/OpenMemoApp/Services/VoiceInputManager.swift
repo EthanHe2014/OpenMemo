@@ -41,17 +41,34 @@ final class SpeakerAudioCaptureBox: @unchecked Sendable {
     }
 
     /// Export captured audio to a temporary WAV file, then return its data.
+    /// ⚠️ 用第一个 buffer 的真实格式建文件（保证写文件格式永远匹配），
+    /// 并记录结果到 Documents/speaker_recording.log —— 之前空文件就是这里静默失败。
     func exportToData() -> Data? {
         var result: Data?
         queue.sync {
-            guard !self.buffers.isEmpty, let format else { return }
-            // Write all buffers into an in-memory WAV via a temp file
-            let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("speaker_cap_\(UUID().uuidString).wav")
-            guard let file = try? AVAudioFile(forWriting: tmp, settings: format.settings) else { return }
-            for buf in self.buffers {
-                try? file.write(from: buf)
+            guard !self.buffers.isEmpty, let format else {
+                VoiceInputManager.logFile("capture: EMPTY (buffers=\(self.buffers.count) format=\(String(describing: self.format)))")
+                return
             }
-            result = try? Data(contentsOf: tmp)
+            let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("speaker_cap_\(UUID().uuidString).wav")
+            do {
+                // 用实际 buffer 格式创建文件
+                guard let firstFormat = self.buffers.first?.format else { return }
+                let file = try AVAudioFile(forWriting: tmp, settings: firstFormat.settings)
+                var written = 0
+                for buf in self.buffers {
+                    do {
+                        try file.write(from: buf)
+                        written += Int(buf.frameLength)
+                    } catch {
+                        VoiceInputManager.logFile("capture: write error \(error)")
+                    }
+                }
+                result = try Data(contentsOf: tmp)
+                VoiceInputManager.logFile("capture: \(self.buffers.count) buffers, \(written) frames -> \(result?.count ?? 0)B")
+            } catch {
+                VoiceInputManager.logFile("capture: export error \(error)")
+            }
             try? FileManager.default.removeItem(at: tmp)
         }
         return result
@@ -65,6 +82,25 @@ final class SpeakerAudioCaptureBox: @unchecked Sendable {
 @MainActor
 @Observable
 final class VoiceInputManager {
+    /// 录音/捕获调试日志（与 SpeakerRecognizer 共用 Documents/speaker_recording.log）
+    nonisolated static func logFile(_ msg: String) {
+        let line = "\(Date().timeIntervalSince1970) \(msg)\n"
+        if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+            let url = docs.appendingPathComponent("speaker_recording.log")
+            if let data = line.data(using: .utf8) {
+                if FileManager.default.fileExists(atPath: url.path) {
+                    if let fh = try? FileHandle(forWritingTo: url) {
+                        fh.seekToEndOfFile()
+                        fh.write(data)
+                        try? fh.close()
+                    }
+                } else {
+                    try? data.write(to: url)
+                }
+            }
+        }
+    }
+
     /// 所有存活实例（每个聊天页一个）。录音等任务占用麦克风前，
     /// 必须 suspendAllForRecording()，否则两个 AVAudioEngine 抢同一个输入会崩。
     private static var instances: [VoiceInputManager] = []
