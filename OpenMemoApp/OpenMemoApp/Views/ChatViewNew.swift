@@ -389,6 +389,16 @@ struct ChatViewNew: View {
 struct LockedChatView: View {
     let speakerName: String
 
+    private var title: String {
+        speakerName.isEmpty ? "私密聊天" : "「\(speakerName)」的私密聊天"
+    }
+
+    private var message: String {
+        speakerName.isEmpty
+            ? "这是别人的聊天记录，只有 TA 本人可以打开"
+            : "这是 \(speakerName) 的个人聊天记录\n只有 TA 本人可以打开"
+    }
+
     var body: some View {
         VStack(spacing: 18) {
             ZStack {
@@ -400,11 +410,11 @@ struct LockedChatView: View {
                     .foregroundStyle(.gray)
             }
 
-            Text("「\(speakerName)」的私密聊天")
+            Text(title)
                 .font(OMFonts.title3.weight(.semibold))
                 .foregroundStyle(.white)
 
-            Text("这是 \(speakerName) 的个人聊天记录\n只有 TA 本人可以打开")
+            Text(message)
                 .font(OMFonts.caption)
                 .foregroundStyle(.white.opacity(0.5))
                 .multilineTextAlignment(.center)

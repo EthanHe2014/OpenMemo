@@ -66,20 +66,33 @@ final class ChatViewModel {
     /// 房主名字：只有 TA 的专属会话能打开（其它人的会话一律上锁）
     var ownerName: String { UserDefaults.standard.string(forKey: "siOwnerName") ?? "Ethan" }
 
-    /// 该会话是否是别人的专属会话（需上锁）
+    /// 当前解锁的说话人（nil = 全部锁定；识别出谁就解锁谁的专属会话）
+    var unlockedSpeaker: String? = nil
+
+    /// 该会话是否上锁。规则：
+    /// - 已识别出说话人 → 只有 TA 的专属会话解锁，其余全锁
+    /// - 未识别（全部锁定）→ 说话人专属会话全锁；匿名会话只留当前正在用的
     func isLockedSession(_ sessionId: String) -> Bool {
-        guard sessionId.hasPrefix("speaker_") else { return false }
-        let name = String(sessionId.dropFirst("speaker_".count))
-        return name != ownerName
+        if sessionId.isEmpty { return false }
+        if let unlocked = unlockedSpeaker {
+            return sessionId != "speaker_\(unlocked)"
+        }
+        if sessionId.hasPrefix("speaker_") { return true }
+        return sessionId != currentSessionId
     }
 
     /// 当前会话是否被锁
     var isLockedChat: Bool { isLockedSession(currentSessionId) }
 
-    /// 当前锁定会话的说话人名字
+    /// 当前锁定会话的说话人名字（非专属会话则为空）
     var lockedSpeakerName: String {
         guard currentSessionId.hasPrefix("speaker_") else { return "" }
         return String(currentSessionId.dropFirst("speaker_".count))
+    }
+
+    /// 识别出说话人 → 解锁 TA 的专属会话
+    func unlockSpeaker(_ name: String) {
+        unlockedSpeaker = name
     }
 
     /// 删除服务端会话并从侧边栏移除。
@@ -152,6 +165,10 @@ final class ChatViewModel {
                 let speaker = await Self.identifySpeaker(from: data)
                 Self.logSI("identify result: \(speaker ?? "nil") (audio \(data.count)B, model ready)")
                 let finalSpeaker = speaker ?? selectedSpeaker
+                // 识别出说话人 → 解锁 TA 的专属会话（其余保持锁定）
+                if let sp = finalSpeaker {
+                    unlockSpeaker(sp)
+                }
                 let userText = Self.prefixSpeaker(finalSpeaker, trimmed)
                 await self.finishSend(userText: userText, sessionId: sessionId, speaker: finalSpeaker)
             }
