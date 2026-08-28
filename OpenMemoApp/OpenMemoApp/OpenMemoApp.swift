@@ -5,6 +5,11 @@ struct OpenMemoApp: App {
     @State private var taskVM = TaskListViewModel()
     @State private var chatVM = ChatViewModel()
 
+    init() {
+        // 每次启动都回到「全部锁定」状态（任务/聊天都要先语音识别解锁）
+        UserDefaults.standard.removeObject(forKey: "siUnlockedSpeaker")
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

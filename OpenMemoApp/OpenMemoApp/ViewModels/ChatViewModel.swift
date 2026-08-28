@@ -39,6 +39,9 @@ final class ChatViewModel {
         // 幂等：仅在启动时重置一次，不是每次切回该页都重置。
         guard !didStartFresh else { return }
         didStartFresh = true
+        // 每次启动都回到「全部锁定」：必须重新说话识别才能解锁
+        unlockedSpeaker = nil
+        UserDefaults.standard.removeObject(forKey: "siUnlockedSpeaker")
         newSession()          // sets currentSessionId = "" and clears messages
         await refreshSessions()
         currentTitle = "新对话"
