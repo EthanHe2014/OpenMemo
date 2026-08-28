@@ -83,7 +83,7 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
         UserDefaults.standard.set(isModelReady, forKey: "speakerModelReady")
     }
     
-    // MARK: - Recording Samples (for training)
+    // MARK: - Manual sample recording (wizard: tap start → speak → tap stop)
 
     /// 麦克风权限（Catalyst 需要显式请求；拒绝则返回 false）
     nonisolated static func ensureMicPermission() async -> Bool {
@@ -102,25 +102,29 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
         #endif
     }
 
-    func startRecordingSample(forSpeaker name: String) async -> Bool {
-        // 1. 权限：没授权直接失败（不再 try! 崩溃）
+    private var recEngine: AVAudioEngine?
+    private var recFile: AVAudioFile?
+    private var recURL: URL?
+    private var recStart: Date?
+    private var recSpeaker: String?
+
+    /// 开始录音：创建引擎 + 文件（后台线程启动，绝不在主线程 start）
+    func beginRecording(forSpeaker name: String) async throws -> Bool {
         guard await Self.ensureMicPermission() else {
             print("❌ 麦克风权限被拒绝")
             return false
         }
+        guard recEngine == nil else { return false }  // 已在录音
 
         let fm = FileManager.default
         guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return false }
-
-        // Create speaker directory
-        let speakerDir = docs.appendingPathComponent("speaker_samples/\(name)", isDirectory: true)
+        let safeName = Self.sanitize(name)
+        let speakerDir = docs.appendingPathComponent("speaker_samples/\(safeName)", isDirectory: true)
         try? fm.createDirectory(at: speakerDir, withIntermediateDirectories: true)
 
-        // Generate filename
         let timestamp = ISO8601DateFormatter().string(from: Date())
             .replacingOccurrences(of: ":", with: "-")
-        let filename = "\(timestamp).m4a"
-        let fileURL = speakerDir.appendingPathComponent(filename)
+        let fileURL = speakerDir.appendingPathComponent("\(timestamp).m4a")
 
         let engine = AVAudioEngine()
         let format = AVAudioFormat(
@@ -129,49 +133,88 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
             channels: AVAudioChannelCount(channelCount),
             interleaved: false
         )!
+        let recorder = try AVAudioFile(forWriting: fileURL, settings: format.settings)
 
-        do {
-            let recorder = try AVAudioFile(forWriting: fileURL, settings: format.settings)
-
-            engine.inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in
-                try? recorder.write(from: buffer)
-            }
-
-            // ⚠️ Catalyst 血泪教训（同 VoiceInputManager）：
-            // AVAudioEngine.start() 在 Catalyst + USB 麦克风上会卡住主线程 →
-            // 必须后台线程启动，主线程绝不能被阻塞。
-            // （用 @unchecked Sendable 盒子绕开 Swift 6 sending 检查，同 AudioEngineBox）
-            let engineBox = AudioEngineBox(engine)
-            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-                Task.detached(priority: .userInitiated) {
-                    do {
-                        try engineBox.engine.start()
-                        cont.resume()
-                    } catch {
-                        cont.resume(throwing: error)
-                    }
-                }
-            }
-
-            // Wait 3 seconds to collect sample
-            try await Task.sleep(nanoseconds: 3_000_000_000)
-
-            engine.stop()
-            engine.inputNode.removeTap(onBus: 0)
-        } catch {
-            print("❌ 录音失败: \(error)")
-            if engine.isRunning { engine.stop() }
-            return false
+        engine.inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in
+            try? recorder.write(from: buffer)
         }
 
-        // Update speaker list
-        if !enrolledSpeakers.contains(name) {
+        // ⚠️ Catalyst 血泪教训（同 VoiceInputManager）：
+        // AVAudioEngine.start() 在 Catalyst + USB 麦克风上会卡住主线程 →
+        // 必须后台线程启动，主线程绝不能被阻塞。
+        let engineBox = AudioEngineBox(engine)
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            Task.detached(priority: .userInitiated) {
+                do {
+                    try engineBox.engine.start()
+                    cont.resume()
+                } catch {
+                    cont.resume(throwing: error)
+                }
+            }
+        }
+
+        recEngine = engine
+        recFile = recorder
+        recURL = fileURL
+        recStart = Date()
+        recSpeaker = name
+        print("🔴 开始录音: \(fileURL.path)")
+        return true
+    }
+
+    /// 停止录音并保存样本，返回 (文件 URL, 时长秒数)
+    func stopRecording() -> (url: URL, duration: TimeInterval)? {
+        guard let engine = recEngine, let start = recStart else { return nil }
+        engine.stop()
+        engine.inputNode.removeTap(onBus: 0)
+        let duration = Date().timeIntervalSince(start)
+        let url = recURL
+        let name = recSpeaker
+        recEngine = nil
+        recFile = nil
+        recURL = nil
+        recStart = nil
+        recSpeaker = nil
+
+        if let url, let name, !enrolledSpeakers.contains(name) {
             enrolledSpeakers.append(name)
             saveEnrolledSpeakers()
         }
+        print("✅ 样本已保存 (\(Int(duration))s): \(url?.path ?? "?")")
+        return url.map { ($0, duration) }
+    }
 
-        print("✅ Sample saved: \(fileURL.path)")
-        return true
+    /// 丢弃当前未完成的录音（用户中途离开录音页）
+    func cancelRecording() {
+        guard let engine = recEngine else { return }
+        engine.stop()
+        engine.inputNode.removeTap(onBus: 0)
+        if let url = recURL {
+            try? FileManager.default.removeItem(at: url)
+        }
+        recEngine = nil
+        recFile = nil
+        recURL = nil
+        recStart = nil
+        recSpeaker = nil
+    }
+
+    /// 删除某个样本文件（重录时用）
+    func deleteSample(at url: URL) {
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    /// 某个说话人已有的样本数
+    func sampleCount(forSpeaker name: String) -> Int {
+        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return 0 }
+        let dir = docs.appendingPathComponent("speaker_samples/\(Self.sanitize(name))")
+        return (try? FileManager.default.contentsOfDirectory(atPath: dir.path))?.count ?? 0
+    }
+
+    nonisolated private static func sanitize(_ name: String) -> String {
+        let bad = CharacterSet(charactersIn: "/:\\\"")
+        return name.components(separatedBy: bad).joined(separator: "_")
     }
     
     // MARK: - Speaker Identification
