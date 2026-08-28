@@ -48,7 +48,6 @@ CONFIG_KEYS = {
     "search_api_key": ("SEARCH_API_KEY", "", "搜索 API 密钥", True),
     "search_base_url": ("SEARCH_BASE_URL", "", "搜索接口地址", False),
     "tts_voice":      ("TTS_VOICE", "zh-CN-XiaoxiaoNeural", "语音角色（Edge TTS）", False),
-    "app_password":   ("APP_PASSWORD", "", "用户切换密码（SHA-256 哈希）", True),
 }
 
 # 只读配置（不支持运行时改，展示用）

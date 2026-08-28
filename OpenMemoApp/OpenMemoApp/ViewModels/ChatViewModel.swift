@@ -77,8 +77,6 @@ final class ChatViewModel {
 
     /// 当前解锁的说话人（nil = 全部锁定；识别出谁就解锁谁的专属会话）
     var unlockedSpeaker: String? = nil
-    /// 密码验证后强制使用的说话人（切换用户用；高置信度识别到别人时自动让位）
-    var verifiedSpeaker: String? = nil
 
     /// 该会话是否上锁。规则：
     /// - 已识别出说话人 → 只有 TA 的专属会话解锁，其余全锁
@@ -197,14 +195,7 @@ final class ChatViewModel {
                 let (identified, confidence) = await Self.identifySpeaker(from: data)
                 Self.logSI("identify result: \(identified ?? "nil") conf=\(confidence ?? -1) (audio \(data.count)B, model ready)")
                 // 置信度太低 → 不算识别（避免把垃圾结果当说话人）
-                let accepted = (identified != nil && (confidence ?? 0) >= 0.6) ? identified : nil
-                // 密码验证过的说话人优先；高置信度识别到别人 → 自动让位
-                var finalSpeaker = verifiedSpeaker ?? accepted
-                if let id = accepted, let conf = confidence, conf >= 0.85, id != verifiedSpeaker {
-                    verifiedSpeaker = nil
-                    finalSpeaker = id
-                }
-                finalSpeaker = finalSpeaker ?? selectedSpeaker
+                let finalSpeaker = ((identified != nil && (confidence ?? 0) >= 0.6) ? identified : nil) ?? selectedSpeaker
                 // 识别出说话人 → 解锁 TA 的专属会话（其余保持锁定）
                 if let sp = finalSpeaker {
                     unlockSpeaker(sp)
@@ -291,18 +282,8 @@ final class ChatViewModel {
         self.messages.append(ChatMessage(role: .user, text: displayText, speaker: speaker))
         defer { self.isSending = false }
         do {
-            let result = try await api.chat(message: userText, sessionId: targetSession, speaker: speaker)
-            // 密码验证通过 → 切换用户：解锁目标 + 后续消息路由到 TA 的会话
-            if result.action == "user_switched", let sp = result.speaker, !sp.isEmpty {
-                verifiedSpeaker = sp
-                unlockSpeaker(sp)
-                if currentSessionId != "speaker_\(sp)" {
-                    currentSessionId = "speaker_\(sp)"
-                    currentTitle = "\(sp) 的聊天"
-                    await self.loadSpeakerHistory("speaker_\(sp)")
-                }
-            }
-            self.messages.append(ChatMessage(role: .assistant, text: result.reply))
+            let reply = try await api.chat(message: userText, sessionId: targetSession, speaker: speaker)
+            self.messages.append(ChatMessage(role: .assistant, text: reply))
             await self.refreshSessions()
         } catch {
             self.messages.append(ChatMessage(role: .assistant, text: "连接失败：\(error.localizedDescription)"))
