@@ -194,9 +194,7 @@ final class ChatViewModel {
             Task {
                 let identified = await Self.identifySpeaker(from: data)
                 Self.logSI("identify result: \(identified ?? "nil") (audio \(data.count)B, model ready)")
-                // 「我是X」声明优先：纠正误识别
-                let claimed = Self.claimedSpeaker(from: trimmed)
-                let finalSpeaker = claimed ?? identified ?? selectedSpeaker
+                let finalSpeaker = identified ?? selectedSpeaker
                 // 识别出说话人 → 解锁 TA 的专属会话（其余保持锁定）
                 if let sp = finalSpeaker {
                     unlockSpeaker(sp)
@@ -306,20 +304,6 @@ final class ChatViewModel {
         }
     }
 
-    /// 从消息里识别「我是X」的身份声明，命中已登记说话人 → 返回名字。
-    /// 用于纠正误识别：识别错了就自己说一句「我是Ethan」。
-    static func claimedSpeaker(from text: String) -> String? {
-        let enrolled = SpeakerRecognizer.shared.enrolledSpeakers
-        // 名字从长到短匹配，避免「Ethan2」被「Ethan」前缀抢走
-        let sorted = enrolled.sorted { $0.count > $1.count }
-        for name in sorted where !name.isEmpty {
-            if text.contains("我是\(name)") || text.contains("我就是\(name)") {
-                return name
-            }
-        }
-        return nil
-    }
-
     /// 从 "[名字] 正文" 解析出 (名字, 正文)；没有前缀则原样返回
     static func extractSpeaker(from text: String) -> (name: String, clean: String)? {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -397,9 +381,7 @@ final class ChatViewModel {
         errorMessage = nil
 
         let sessionId = currentSessionId
-        // 「我是X」声明 → 切到 TA 的会话（纠正误识别）
-        let claimed = Self.claimedSpeaker(from: text)
-        let speaker = claimed ?? selectedSpeaker
+        let speaker = selectedSpeaker
         if let sp = speaker {
             unlockSpeaker(sp)
         }
