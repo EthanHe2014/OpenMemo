@@ -48,6 +48,7 @@ CONFIG_KEYS = {
     "search_api_key": ("SEARCH_API_KEY", "", "搜索 API 密钥", True),
     "search_base_url": ("SEARCH_BASE_URL", "", "搜索接口地址", False),
     "tts_voice":      ("TTS_VOICE", "zh-CN-XiaoxiaoNeural", "语音角色（Edge TTS）", False),
+    "app_password":   ("APP_PASSWORD", "", "用户切换密码（SHA-256 哈希）", True),
 }
 
 # 只读配置（不支持运行时改，展示用）
@@ -99,6 +100,17 @@ def set_setting(key: str, value) -> bool:
         settings[key] = str(value).strip()
     _save_settings(settings)
     return True
+
+
+def get_setting(key: str):
+    """读取运行时配置（settings.json 覆盖 .env）。"""
+    if key not in CONFIG_KEYS:
+        return None
+    settings = _load_settings()
+    if key in settings and settings[key] not in (None, ""):
+        return settings[key]
+    env_name, default, _, _ = CONFIG_KEYS[key]
+    return os.environ.get(env_name, default)
 
 
 def get_all_settings() -> dict:

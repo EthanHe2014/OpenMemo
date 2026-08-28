@@ -273,7 +273,7 @@ async def analyze_intent(user_message: str, conversation_context: list = None,
     """
     from datetime import datetime
     from .tasks import TaskManager
-    from .prompts import PRIVACY_RULES
+    from .prompts import PRIVACY_RULES, PASSWORD_RULES
     
     # Build context-aware system prompt
     now = datetime.now()
@@ -310,7 +310,7 @@ async def analyze_intent(user_message: str, conversation_context: list = None,
         identity_context = "\n\n## 当前说话人\n访客（未通过语音识别）"
         task_context = ""   # 访客：不给任务/提醒等私密信息
     
-    enhanced_prompt = SYSTEM_PROMPT + time_context + identity_context + task_context + PRIVACY_RULES
+    enhanced_prompt = SYSTEM_PROMPT + time_context + identity_context + task_context + PRIVACY_RULES + PASSWORD_RULES
     
     messages = []
     
@@ -353,6 +353,8 @@ async def analyze_intent(user_message: str, conversation_context: list = None,
                 "tasks": parsed.get("tasks"),
                 "appointment": parsed.get("appointment"),
                 "search": parsed.get("search"),
+                "password": parsed.get("password"),
+                "unlock_speaker": parsed.get("unlock_speaker"),
             }
 
     # JSON 解析失败 → 绝不把原始输出（可能含 {\"action\":...} JSON）展示给用户。
@@ -374,6 +376,8 @@ async def analyze_intent(user_message: str, conversation_context: list = None,
                     "tasks": retry_parsed.get("tasks"),
                     "appointment": retry_parsed.get("appointment"),
                     "search": retry_parsed.get("search"),
+                    "password": retry_parsed.get("password"),
+                    "unlock_speaker": retry_parsed.get("unlock_speaker"),
                 }
         except Exception:
             pass

@@ -15,6 +15,7 @@ Everything conversational is the AI's. Everything mechanical (DB + scheduler)
 is ours. We never "humanize" or rewrite AI output.
 """
 import asyncio
+import hashlib
 import json
 import re
 from datetime import datetime, timedelta
@@ -460,8 +461,12 @@ async def _apply_ai_action(result: dict, session_id: str, owner: str = None):
     return
 
 
+# 切换用户密码：会话级待切换目标
+_pending_switch: dict = {}
+
 async def process_message(session_id: str, user_message: str,
-                          speak_response: bool = True, speaker: str = None) -> str:
+                          speak_response: bool = True, speaker: str = None):
+    """... 返回 (reply, unlock_speaker)"""
     """Handle a user message.
 
     Flow:
@@ -541,7 +546,40 @@ async def process_message(session_id: str, user_message: str,
         except Exception:
             pass
 
+    # ── 密码动作（切换用户）──
+    unlock_speaker = None
+    action = result.get("action")
+    if action == "set_password":
+        pw = result.get("password")
+        if pw and len(str(pw).strip()) >= 4:
+            from . import config as _cfg
+            _cfg.set_setting("app_password", hashlib.sha256(str(pw).strip().encode()).hexdigest())
+            reply = "密码已设置"
+            conv_manager.add_message(session_id, "assistant", reply)
+        else:
+            reply = "密码太短或没听清，请再说一次"
+
+    elif action == "request_password":
+        target = result.get("unlock_speaker")
+        if target:
+            _pending_switch[session_id] = str(target).strip()
+        reply = "请输入密码"
+
+    elif action == "verify_password":
+        pw = result.get("password")
+        target = _pending_switch.pop(session_id, None) or result.get("unlock_speaker")
+        from . import config as _cfg
+        stored = _cfg.get_setting("app_password")
+        if stored and pw and hashlib.sha256(str(pw).strip().encode()).hexdigest() == stored:
+            if target:
+                reply = f"验证通过，已切换到{target}的聊天"
+                unlock_speaker = str(target).strip()
+            else:
+                reply = "验证通过"
+        else:
+            reply = "密码错误，无法切换用户"
+
     if speak_response:
         await speak_safe(reply)
 
-    return reply
+    return reply, unlock_speaker

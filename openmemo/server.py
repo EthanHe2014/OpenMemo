@@ -199,11 +199,16 @@ async def chat(request: Request):
     if not message:
         return JSONResponse({"error": "Message is required"}, status_code=400)
     
-    reply = await process_message(session_id, message, speak_response=False, speaker=speaker)
+    reply, unlock_speaker = await process_message(session_id, message, speak_response=False, speaker=speaker)
     # 后台朗读（Edge TTS XiaoxiaoNeural，与提醒同声）：回复立即返回，语音不阻塞聊天
     if speak_response:
         asyncio.create_task(speak_safe(reply))
-    return {"reply": reply, "success": True}
+    return {
+        "reply": reply,
+        "success": True,
+        "action": "user_switched" if unlock_speaker else None,
+        "speaker": unlock_speaker,
+    }
 
 
 @app.post("/api/speak")
