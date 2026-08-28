@@ -95,11 +95,13 @@ final class ChatViewModel {
             let sessionId = currentSessionId
             Task {
                 let speaker = await Self.identifySpeaker(from: data)
+                Self.logSI("identify result: \(speaker ?? "nil") (audio \(data.count)B, model ready)")
                 let finalSpeaker = speaker ?? selectedSpeaker
                 let userText = Self.prefixSpeaker(finalSpeaker, trimmed)
                 await self.finishSend(userText: userText, sessionId: sessionId, speaker: finalSpeaker)
             }
         } else {
+            Self.logSI("no identify: audio=\(audioData?.count ?? -1)B modelReady=\(SpeakerRecognizer.shared.isModelReady)")
             let userText = Self.prefixSpeaker(selectedSpeaker, trimmed)
             messages.append(ChatMessage(role: .user, text: userText))
             isSending = true
@@ -107,6 +109,25 @@ final class ChatViewModel {
             let sessionId = currentSessionId
             Task {
                 await self.finishSend(userText: userText, sessionId: sessionId, speaker: selectedSpeaker)
+            }
+        }
+    }
+
+    /// 写说话人识别调试日志（Documents/speaker_si.log）
+    static func logSI(_ msg: String) {
+        let line = "\(Date()) \(msg)\n"
+        if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+            let url = docs.appendingPathComponent("speaker_si.log")
+            if let data = line.data(using: .utf8) {
+                if FileManager.default.fileExists(atPath: url.path) {
+                    if let fh = try? FileHandle(forWritingTo: url) {
+                        fh.seekToEndOfFile()
+                        fh.write(data)
+                        try? fh.close()
+                    }
+                } else {
+                    try? data.write(to: url)
+                }
             }
         }
     }
@@ -123,13 +144,16 @@ final class ChatViewModel {
             .appendingPathComponent("voice_\(UUID().uuidString).caf")
         do {
             try data.write(to: tmp)
+            logSI("identify: wrote \(data.count)B to \(tmp.lastPathComponent)")
             let results = await SpeakerRecognizer.shared.identifySpeaker(audioURL: tmp)
             try? FileManager.default.removeItem(at: tmp)
+            logSI("identify: results = \(results)")
             guard let top = results.first else { return nil }
             // 置信度太低或识别成背景 → 不算
             guard top.0 != "__background__", top.1 >= 0.6 else { return nil }
             return top.0
         } catch {
+            logSI("identify: ERROR \(error)")
             try? FileManager.default.removeItem(at: tmp)
             return nil
         }
