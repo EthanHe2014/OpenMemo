@@ -19,25 +19,25 @@ struct ChatViewNew: View {
             OMBackground(.chat)
             
             VStack(spacing: 0) {
-                // Custom navigation bar
+                // Custom navigation bar（锁定时也保留，左上角三横线可打开聊天列表）
                 navBar
                 
-                // Messages
-                messageList
-                
-                // Input area
-                inputSection
-            }
-            // 别人的专属会话 → 内容模糊 + 锁屏遮罩
-            .blur(radius: chatVM.isLockedChat ? 25 : 0)
-            .allowsHitTesting(!chatVM.isLockedChat)
-            .animation(.easeInOut(duration: 0.3), value: chatVM.isLockedChat)
-            
-            // 锁屏：别人的私密聊天
-            if chatVM.isLockedChat {
-                LockedChatView(speakerName: chatVM.lockedSpeakerName) {
-                    withAnimation(OMAnimations.spring) {
-                        showSidebar = true
+                ZStack {
+                    VStack(spacing: 0) {
+                        // Messages
+                        messageList
+                        
+                        // Input area
+                        inputSection
+                    }
+                    // 别人的专属会话 → 内容模糊 + 锁屏遮罩（顶栏不受影响）
+                    .blur(radius: chatVM.isLockedChat ? 25 : 0)
+                    .allowsHitTesting(!chatVM.isLockedChat)
+                    .animation(.easeInOut(duration: 0.3), value: chatVM.isLockedChat)
+                    
+                    // 锁屏：别人的私密聊天
+                    if chatVM.isLockedChat {
+                        LockedChatView(speakerName: chatVM.lockedSpeakerName)
                     }
                 }
             }
@@ -368,7 +368,6 @@ struct ChatViewNew: View {
 // MARK: - Locked Chat View (别人的专属会话)
 struct LockedChatView: View {
     let speakerName: String
-    var onShowChats: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 18) {
@@ -390,24 +389,6 @@ struct LockedChatView: View {
                 .foregroundStyle(.white.opacity(0.5))
                 .multilineTextAlignment(.center)
                 .lineSpacing(4)
-
-            // 查看聊天列表
-            Button {
-                onShowChats()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "text.bubble")
-                    Text("查看聊天列表")
-                }
-                .font(OMFonts.subheadline.weight(.semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 10)
-                .background(Color.white.opacity(0.12))
-                .clipShape(Capsule())
-                .hoverGlow()
-            }
-            .buttonStyle(.plain)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(OMColors.background.opacity(0.65))
