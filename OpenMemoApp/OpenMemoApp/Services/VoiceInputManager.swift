@@ -43,6 +43,8 @@ final class SpeakerAudioCaptureBox: @unchecked Sendable {
     /// Export captured audio to a temporary WAV file, then return its data.
     /// ⚠️ 用第一个 buffer 的真实格式建文件（保证写文件格式永远匹配），
     /// 并记录结果到 Documents/speaker_recording.log —— 之前空文件就是这里静默失败。
+    /// ⚠️ 开头的应答回声「我在！」（TTS 合成声，每次都一样）会污染说话人识别：
+    /// 模型会锁死在这同一个合成声上 → 谁都被识别成同一个人。这里裁掉前 ~1.5 秒。
     func exportToData() -> Data? {
         var result: Data?
         queue.sync {
@@ -56,14 +58,42 @@ final class SpeakerAudioCaptureBox: @unchecked Sendable {
                 // ⚠️ 必须 .caf：SoundAnalysis 读 WAV 容器会静默返回空结果（实测）
                 guard let firstFormat = self.buffers.first?.format else { return }
                 let file = try AVAudioFile(forWriting: tmp, settings: firstFormat.settings)
+                // 裁掉开头应答回声：前 1.5 秒的帧全部跳过
+                let skipFrames = AVAudioFrameCount(1.5 * firstFormat.sampleRate)
+                var skipped: AVAudioFrameCount = 0
                 var written = 0
                 for buf in self.buffers {
+                    if skipped < skipFrames {
+                        let remain = skipFrames - skipped
+                        if buf.frameLength <= remain {
+                            skipped += buf.frameLength
+                            continue
+                        }
+                        // 部分裁：复制剩余帧到新 buffer 再写
+                        let keepStart = Int(remain)
+                        let keepCount = Int(buf.frameLength) - keepStart
+                        if let slice = AVAudioPCMBuffer(pcmFormat: buf.format, frameCapacity: AVAudioFrameCount(keepCount)) {
+                            slice.frameLength = AVAudioFrameCount(keepCount)
+                            if let src = buf.floatChannelData, let dst = slice.floatChannelData {
+                                for ch in 0..<Int(buf.format.channelCount) {
+                                    dst[ch].update(from: src[ch] + keepStart, count: keepCount)
+                                }
+                            }
+                            try? file.write(from: slice)
+                            written += keepCount
+                        }
+                        skipped = skipFrames
+                        continue
+                    }
                     do {
                         try file.write(from: buf)
                         written += Int(buf.frameLength)
                     } catch {
                         VoiceInputManager.logFile("capture: write error \(error)")
                     }
+                }
+                if skipped > 0 {
+                    VoiceInputManager.logFile("capture: trimmed \(skipped) frames (ack echo)")
                 }
                 result = try Data(contentsOf: tmp)
                 VoiceInputManager.logFile("capture: \(self.buffers.count) buffers, \(written) frames -> \(result?.count ?? 0)B")
