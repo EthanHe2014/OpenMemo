@@ -123,20 +123,25 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
                                     userInfo: [NSLocalizedDescriptionKey: "没有找到样本目录"]))
         }
         var total = 0
-        for d in dirs where d.hasDirectoryPath {
+        let speakerDirs = dirs.filter(\.hasDirectoryPath)
+        for d in speakerDirs {
             total += (try? fm.contentsOfDirectory(atPath: d.path))?.count ?? 0
         }
         guard total > 0 else {
             return .failure(NSError(domain: "SpeakerRecognizer", code: 5,
                                     userInfo: [NSLocalizedDescriptionKey: "没有样本可训练，请先录音"]))
         }
-        Self.logToFile("train: \(total) samples, \(dirs.filter(\.hasDirectoryPath).count) speakers")
+        Self.logToFile("train: \(total) samples, \(speakerDirs.count) speakers")
 
         let outPackage = docs.appendingPathComponent("SpeakerModel.mlmodel")
 
         do {
             // Create ML 训练很重 → 后台线程跑，绝不卡主线程（只回 URL，模型在 MainActor 上加载）
             let compiledURL = try await Task.detached(priority: .userInitiated) { () -> URL in
+                // Create ML 要求至少两个类别：只有一个人时，自动补一个合成“背景噪音”类
+                if speakerDirs.count < 2 {
+                    try Self.generateBackgroundClass(in: samplesDir)
+                }
                 let classifier = try MLSoundClassifier(trainingData: .labeledDirectories(at: samplesDir))
                 let metadata = MLModelMetadata(
                     author: "OpenMemo",
@@ -153,6 +158,34 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
         } catch {
             Self.logToFile("train: FAILED \(error)")
             return .failure(error)
+        }
+    }
+
+    /// 生成合成“背景噪音”类别（Create ML 需要至少两类才能训练）
+    nonisolated static func generateBackgroundClass(in samplesDir: URL) throws {
+        let bgDir = samplesDir.appendingPathComponent("__background__", isDirectory: true)
+        try? FileManager.default.createDirectory(at: bgDir, withIntermediateDirectories: true)
+
+        let format = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                   sampleRate: 16000, channels: 1, interleaved: false)!
+        let specs: [(String, Float, Float)] = [
+            ("silence", 0.001, 0),     // 静音
+            ("noise", 0.03, 0),        // 白噪音
+            ("hum", 0.01, 0.005),      // 低频哼声 + 噪音
+        ]
+        for (i, spec) in specs.enumerated() {
+            let url = bgDir.appendingPathComponent("bg_\(i).wav")
+            let frameCount = AVAudioFrameCount(3.0 * 16000)
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { continue }
+            buffer.frameLength = frameCount
+            let ch = buffer.floatChannelData![0]
+            for f in 0..<Int(frameCount) {
+                let noise = Float.random(in: -1...1) * spec.1
+                let hum = spec.2 * sinf(2 * Float.pi * 50 * Float(f) / 16000)
+                ch[f] = noise + hum
+            }
+            let file = try AVAudioFile(forWriting: url, settings: format.settings)
+            try file.write(from: buffer)
         }
     }
     
@@ -353,7 +386,12 @@ final class SpeakerRecognizer: NSObject, SNResultsObserving {
     nonisolated func request(_ request: SNRequest, didProduce result: SNResult) {
         guard let classification = result as? SNClassificationResult,
               let top = classification.classifications.first else { return }
-        
+
+        // 合成背景噪音类：不当作说话人
+        if top.identifier == "__background__" {
+            return
+        }
+
         // Copy Sendable values out of isolation before sending to MainActor
         let speaker = top.identifier
         let confidence = top.confidence
