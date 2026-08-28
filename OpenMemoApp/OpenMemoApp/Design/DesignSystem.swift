@@ -28,6 +28,8 @@ enum OMColors {
     static let success = Color(hex: "34D399")
     static let warning = Color(hex: "FBBF24")
     static let error = Color(hex: "F87171")
+    /// 删除/危险操作的纯红（悬停发光用）
+    static let danger = Color(hex: "FF3B30")
     static let info = Color(hex: "60A5FA")
     
     // Priority
@@ -204,14 +206,15 @@ struct HoverGlow: ViewModifier {
     @State private var isHovered = false
     var cornerRadius: CGFloat = 14
     var color: Color = .white
+    var isColored: Bool = false
     
     func body(content: Content) -> some View {
         content
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(isHovered ? color.opacity(0.45) : Color.clear, lineWidth: 1)
+                    .stroke(isHovered ? color.opacity(isColored ? 0.75 : 0.45) : Color.clear, lineWidth: 1.2)
             )
-            .shadow(color: isHovered ? color.opacity(0.35) : .clear, radius: isHovered ? 10 : 0)
+            .shadow(color: isHovered ? color.opacity(isColored ? 0.65 : 0.35) : .clear, radius: isHovered ? (isColored ? 14 : 10) : 0)
             .brightness(isHovered ? 0.06 : 0)
             .scaleEffect(isHovered ? 1.02 : 1)
             .animation(.easeInOut(duration: 0.15), value: isHovered)
@@ -227,9 +230,9 @@ extension View {
         modifier(HoverGlow(cornerRadius: cornerRadius))
     }
 
-    /// Colored glow on hover（删除按钮用红色）
+    /// Colored glow on hover（删除按钮用纯红，更醒目）
     func hoverGlow(color: Color, cornerRadius: CGFloat = 14) -> some View {
-        modifier(HoverGlow(cornerRadius: cornerRadius, color: color))
+        modifier(HoverGlow(cornerRadius: cornerRadius, color: color, isColored: true))
     }
 }
 

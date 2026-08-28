@@ -383,7 +383,7 @@ struct SessionRow: View {
                             .frame(width: 26, height: 26)
                             .background(Color.white.opacity(0.08))
                             .clipShape(Circle())
-                            .hoverGlow(color: OMColors.error)   // 悬停红色发光
+                            .hoverGlow(color: OMColors.danger)   // 悬停红色发光
                     }
                     .buttonStyle(.plain)
                 }

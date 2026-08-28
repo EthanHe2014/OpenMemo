@@ -142,7 +142,7 @@ struct ChatViewNew: View {
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 44)
                     .glass(cornerRadius: 14)
-                    .hoverGlow(color: OMColors.error)
+                    .hoverGlow(color: OMColors.danger)
             }
         }
         .padding(.horizontal)

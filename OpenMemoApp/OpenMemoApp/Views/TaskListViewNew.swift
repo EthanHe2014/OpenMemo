@@ -480,7 +480,7 @@ struct TaskCard: View {
                         .frame(width: 32, height: 32)
                         .background(Color.white.opacity(0.08))
                         .clipShape(Circle())
-                        .hoverGlow(color: OMColors.error)
+                        .hoverGlow(color: OMColors.danger)
                 }
                 .buttonStyle(.plain)
             }
