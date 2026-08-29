@@ -282,8 +282,17 @@ final class ChatViewModel {
         self.messages.append(ChatMessage(role: .user, text: displayText, speaker: speaker))
         defer { self.isSending = false }
         do {
-            let reply = try await api.chat(message: userText, sessionId: targetSession, speaker: speaker)
-            self.messages.append(ChatMessage(role: .assistant, text: reply))
+            let result = try await api.chat(message: userText, sessionId: targetSession, speaker: speaker)
+            // 语音切换到 test（服务端白名单只放行 test，别的用户切不了）
+            if result.action == "user_switched", let sp = result.speaker, !sp.isEmpty {
+                self.unlockSpeaker(sp)
+                if self.currentSessionId != "speaker_\(sp)" {
+                    self.currentSessionId = "speaker_\(sp)"
+                    self.currentTitle = "\(sp) 的聊天"
+                    await self.loadSpeakerHistory("speaker_\(sp)")
+                }
+            }
+            self.messages.append(ChatMessage(role: .assistant, text: result.reply))
             await self.refreshSessions()
         } catch {
             self.messages.append(ChatMessage(role: .assistant, text: "连接失败：\(error.localizedDescription)"))

@@ -236,6 +236,15 @@ struct ChatRequest: Codable {
 struct ChatResponse: Codable {
     let reply: String
     let success: Bool
+    let action: String?
+    let speaker: String?
+}
+
+/// 聊天结果：回复文本 + 可能的用户切换信号（仅白名单用户 test 会带）
+struct ChatResult {
+    let reply: String
+    let action: String?
+    let speaker: String?
 }
 
 // MARK: - 会话（DeepSeek 风格侧边栏）

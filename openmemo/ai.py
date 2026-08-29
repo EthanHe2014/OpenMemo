@@ -353,6 +353,7 @@ async def analyze_intent(user_message: str, conversation_context: list = None,
                 "tasks": parsed.get("tasks"),
                 "appointment": parsed.get("appointment"),
                 "search": parsed.get("search"),
+                "speaker": parsed.get("speaker"),
             }
 
     # JSON 解析失败 → 绝不把原始输出（可能含 {\"action\":...} JSON）展示给用户。
@@ -373,6 +374,7 @@ async def analyze_intent(user_message: str, conversation_context: list = None,
                     "task": retry_parsed.get("task"),
                     "tasks": retry_parsed.get("tasks"),
                     "appointment": retry_parsed.get("appointment"),
+                    "speaker": retry_parsed.get("speaker"),
                     "search": retry_parsed.get("search"),
                 }
         except Exception:

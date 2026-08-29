@@ -334,6 +334,15 @@ async def _apply_ai_action(result: dict, session_id: str, owner: str = None):
     owner = 说话人：建的任务归 TA。"""
     action = result.get("action") or "chat"
 
+    if action == "switch_user":
+        # 语音切换用户：只放行白名单（test）。AI 想切别人 → 拒绝，保持当前用户。
+        target = (result.get("speaker") or "").strip().lower()
+        if target in SWITCHABLE_USERS:
+            print(f"[conversation] 语音切换用户 -> {target}")
+        else:
+            print(f"[conversation] 拒绝语音切换非白名单用户: {target}")
+        return
+
     if action == "task_added":
         created = 0
         seen = set()  # 去重：同一轮 AI 回复里 内容+时间 相同的任务只建一个
@@ -460,6 +469,9 @@ async def _apply_ai_action(result: dict, session_id: str, owner: str = None):
     return
 
 
+# 语音可直接切换的用户白名单（只有 test 可以「说一句就进」；其他用户必须靠声纹识别）
+SWITCHABLE_USERS = {"test"}
+
 async def process_message(session_id: str, user_message: str,
                           speak_response: bool = True, speaker: str = None) -> str:
     """Handle a user message. Returns the reply text."""
@@ -542,7 +554,14 @@ async def process_message(session_id: str, user_message: str,
         except Exception:
             pass
 
+    # 语音切换用户信号（仅白名单 test 会返回；其余情况 None）
+    switch_to = None
+    if result.get("action") == "switch_user":
+        target = (result.get("speaker") or "").strip().lower()
+        if target in SWITCHABLE_USERS:
+            switch_to = target
+
     if speak_response:
         await speak_safe(reply)
 
-    return reply
+    return reply, switch_to
