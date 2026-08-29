@@ -51,8 +51,8 @@ async def call_ai(messages: list, system_prompt: str = None, retries: int = 1,
     # 纯文本生成保持流式（原行为，兼容只支持流式的接口）。
     use_stream = not json_mode
     last_error = None
-    # 尝试预算：常规重试 + json 空白响应重试 + 换流式重试
-    max_attempts = retries + 4
+    # 尝试预算：常规重试 + json 空白响应重试 + 换流式重试（DeepSeek json 模式偶发空白）
+    max_attempts = retries + 6
     for attempt in range(max_attempts):
         payload = {
             "model": model,
@@ -142,15 +142,15 @@ async def call_ai(messages: list, system_prompt: str = None, retries: int = 1,
                     return {"content": content, "error": None}
                 
                 # 空内容（DeepSeek json_object 偶发返回纯空白）→ 同模式重试；
-                # 非流式重试耗尽后再换流式兜底一次。
+                # 非流式重试耗尽后再换流式兜底一次；流式也空 → 降级本地模型。
                 last_error = "Empty response"
                 if not use_stream:
-                    if attempt < max_attempts - 2:
+                    if attempt < max_attempts - 3:
                         await asyncio.sleep(1)
                         continue
                     use_stream = True
                     continue
-                return {"content": None, "error": last_error}
+                return await _try_fallback(full_messages, temperature, max_tokens)
         except httpx.HTTPStatusError as e:
             last_error = f"API error {e.response.status_code}: {e.response.text[:200]}"
         except httpx.ConnectError as e:
@@ -161,7 +161,42 @@ async def call_ai(messages: list, system_prompt: str = None, retries: int = 1,
         if attempt < retries:
             await asyncio.sleep(1)
     
-    return {"content": None, "error": last_error or "Unknown error"}
+    # 主服务连接失败/异常 → 降级本地模型（保证用户永远有回复）
+    return await _try_fallback(full_messages, temperature, max_tokens)
+
+
+async def _try_fallback(messages: list, temperature: float = None, max_tokens: int = None) -> dict:
+    """主 AI 服务连续失败时，降级到本地模型（llama-server），避免「AI 服务不可用」。
+    本地模型是自托管推理，不依赖外网/API 配额。"""
+    from .config import get_setting
+    fb_url = (get_setting("fallback_ai_base_url") or "").strip()
+    fb_model = (get_setting("fallback_ai_model") or "").strip()
+    if not fb_url or not fb_model:
+        return {"content": None, "error": "Empty response"}
+    print(f"[ai] 主服务失败，降级到本地模型 {fb_model}")
+    try:
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            r = await client.post(
+                f"{fb_url.rstrip('/')}/chat/completions",
+                json={
+                    "model": fb_model,
+                    "messages": messages,
+                    "temperature": temperature if temperature is not None else 0.3,
+                    "max_tokens": max_tokens or 2000,
+                    "stream": False,
+                },
+                headers={"Content-Type": "application/json"},
+            )
+            if r.status_code == 200:
+                choices = r.json().get("choices") or []
+                content = (choices[0].get("message", {}).get("content") or "").strip() if choices else ""
+                if content:
+                    print(f"[ai] 本地降级成功（{len(content)} 字符）")
+                    return {"content": content, "error": None}
+                return {"content": None, "error": "Fallback empty response"}
+            return {"content": None, "error": f"Fallback failed: HTTP {r.status_code}"}
+    except Exception as e:
+        return {"content": None, "error": f"Fallback failed: {str(e)[:120]}"}
 
 
 def _extract_json(content: str) -> dict | None:

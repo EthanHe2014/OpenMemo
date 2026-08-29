@@ -48,6 +48,8 @@ CONFIG_KEYS = {
     "search_api_key": ("SEARCH_API_KEY", "", "搜索 API 密钥", True),
     "search_base_url": ("SEARCH_BASE_URL", "", "搜索接口地址", False),
     "tts_voice":      ("TTS_VOICE", "zh-CN-XiaoxiaoNeural", "语音角色（Edge TTS）", False),
+    "fallback_ai_base_url": ("FALLBACK_AI_BASE_URL", "http://127.0.0.1:18080/v1", "AI 主服务失败时的降级地址（本地模型）", False),
+    "fallback_ai_model":   ("FALLBACK_AI_MODEL", "claude-3-opus", "降级模型名（本地 llama-server 的模型别名）", False),
 }
 
 # 只读配置（不支持运行时改，展示用）
