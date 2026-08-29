@@ -391,7 +391,9 @@ final class ChatViewModel {
         errorMessage = nil
 
         let sessionId = currentSessionId
-        let speaker = selectedSpeaker
+        // 打字消息：手动选的说话人优先；没选 → 用当前已解锁的说话人
+        // （语音解锁过 Ethan 后，打字也按 Ethan 处理，而不是访客）
+        let speaker = selectedSpeaker ?? unlockedSpeaker
         if let sp = speaker {
             unlockSpeaker(sp)
         }
