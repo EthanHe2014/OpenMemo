@@ -298,7 +298,8 @@ async def analyze_intent(user_message: str, conversation_context: list = None,
         identity_context = f"\n\n## 当前说话人\n{speaker}（已通过语音识别确认）"
         try:
             tm = TaskManager()
-            pending = tm.list_tasks(status="pending", limit=5)
+            # 隐私：只给 AI 当前说话人自己的待办（owner 过滤，绝不混入别人的任务）
+            pending = tm.list_tasks(status="pending", limit=5, owner=speaker)
             if pending:
                 task_lines = [f"  - {t['content']}（{t.get('trigger_time', '无时间')}，{t['status']}）" for t in pending]
                 task_context = f"\n\n## 用户当前待办任务\n" + "\n".join(task_lines)

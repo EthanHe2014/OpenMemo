@@ -216,28 +216,24 @@ class TaskManager:
         deleted_filter = "" if include_deleted else " AND deleted_at IS NULL"
         owner_filter = ""
         args = []
+        # ⚠️ 占位符顺序必须与 SQL 一致：status 在 WHERE 前面，owner 在后面
+        if status:
+            args.append(status)
+            where = "status = ?"
+        else:
+            where = "1=1"
         if owner:
             # 隐私：指定 owner 时只返回 TA 的任务。owner IS NULL 的任务是
             # 未认领数据，不给任何人看（否则任何识别出的人都能看到）。
             owner_filter = " AND owner = ?"
             args.append(owner)
-        if status:
-            args.append(status)
-            cursor.execute(
-                f"""SELECT * FROM tasks WHERE status = ? {deleted_filter}{owner_filter}
-                   ORDER BY 
-                     CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 2 END,
-                     trigger_time ASC LIMIT ?""",
-                (*args, limit)
-            )
-        else:
-            cursor.execute(
-                f"""SELECT * FROM tasks WHERE 1=1 {deleted_filter}{owner_filter}
-                   ORDER BY 
-                     CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 2 END,
-                     trigger_time ASC LIMIT ?""",
-                (*args, limit)
-            )
+        cursor.execute(
+            f"""SELECT * FROM tasks WHERE {where} {deleted_filter}{owner_filter}
+               ORDER BY 
+                 CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 2 END,
+                 trigger_time ASC LIMIT ?""",
+            (*args, limit)
+        )
         
         rows = cursor.fetchall()
         conn.close()
