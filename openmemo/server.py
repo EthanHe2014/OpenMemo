@@ -146,7 +146,8 @@ async def create_task(request: Request):
         notes=body.get("notes"),
         duration_minutes=body.get("duration_minutes"),
         task_type=body.get("task_type", "normal"),
-        meta_data=body.get("meta_data")
+        meta_data=body.get("meta_data"),
+        owner=body.get("owner")
     )
     
     # Schedule if time is set

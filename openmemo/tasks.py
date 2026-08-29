@@ -209,7 +209,7 @@ class TaskManager:
     def list_tasks(self, status: str = None, limit: int = 20, include_deleted: bool = False,
                     owner: str = None) -> List[dict]:
         """List tasks, optionally filtered by status（默认排除软删除）。
-        owner 指定时：只看 TA 的任务 + 无人认领的旧任务（owner IS NULL）。"""
+        owner 指定时：只返回 TA 的任务（owner IS NULL 的未认领任务不给任何人看）。"""
         conn = get_db()
         cursor = conn.cursor()
         
@@ -217,7 +217,9 @@ class TaskManager:
         owner_filter = ""
         args = []
         if owner:
-            owner_filter = " AND (owner = ? OR owner IS NULL)"
+            # 隐私：指定 owner 时只返回 TA 的任务。owner IS NULL 的任务是
+            # 未认领数据，不给任何人看（否则任何识别出的人都能看到）。
+            owner_filter = " AND owner = ?"
             args.append(owner)
         if status:
             args.append(status)

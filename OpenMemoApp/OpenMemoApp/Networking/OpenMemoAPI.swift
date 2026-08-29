@@ -62,7 +62,7 @@ final class OpenMemoAPI: @unchecked Sendable {
         return resp.task
     }
 
-    func createTask(content: String, triggerTime: String? = nil, priority: String = "medium", isRecurring: String? = nil, notes: String? = nil) async throws -> OpenMemoTask {
+    func createTask(content: String, triggerTime: String? = nil, priority: String = "medium", isRecurring: String? = nil, notes: String? = nil, owner: String? = nil) async throws -> OpenMemoTask {
         var body: [String: Any?] = [
             "content": content,
             "priority": priority,
@@ -70,6 +70,7 @@ final class OpenMemoAPI: @unchecked Sendable {
             "notes": notes
         ]
         body["trigger_time"] = triggerTime
+        body["owner"] = owner
         let jsonData = try JSONSerialization.data(withJSONObject: body.compactMapValues { $0 })
         var req = URLRequest(url: URL(string: "\(baseURL)/api/tasks")!)
         req.httpMethod = "POST"

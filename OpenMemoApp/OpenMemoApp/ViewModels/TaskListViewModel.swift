@@ -101,7 +101,7 @@ final class TaskListViewModel {
 
     func add(content: String, triggerTime: String?, priority: String, notes: String?) async {
         do {
-            _ = try await api.createTask(content: content, triggerTime: triggerTime, priority: priority, notes: notes)
+            _ = try await api.createTask(content: content, triggerTime: triggerTime, priority: priority, notes: notes, owner: currentOwner)
             await load()
         } catch {
             self.errorMessage = error.localizedDescription
