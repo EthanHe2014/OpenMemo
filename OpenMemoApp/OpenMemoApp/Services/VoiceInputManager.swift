@@ -58,8 +58,10 @@ final class SpeakerAudioCaptureBox: @unchecked Sendable {
                 // ⚠️ 必须 .caf：SoundAnalysis 读 WAV 容器会静默返回空结果（实测）
                 guard let firstFormat = self.buffers.first?.format else { return }
                 let file = try AVAudioFile(forWriting: tmp, settings: firstFormat.settings)
-                // 裁掉开头应答回声：前 1.5 秒的帧全部跳过
-                let skipFrames = AVAudioFrameCount(1.5 * firstFormat.sampleRate)
+                // 裁掉开头应答回声：前 2.5 秒的帧全部跳过（与 stripAckUntil 一致，
+                // 覆盖「我在！」整个应答 + Edge TTS 生成延迟；残留的 TTS 尾巴会
+                // 污染说话人识别和情绪识别）
+                let skipFrames = AVAudioFrameCount(2.5 * firstFormat.sampleRate)
                 var skipped: AVAudioFrameCount = 0
                 var written = 0
                 for buf in self.buffers {

@@ -168,7 +168,11 @@ def detect_emotion(wav_path: str | Path) -> dict:
         if emotion:
             # 去掉 <| |> 特殊 token 外壳，再映射中文
             raw = str(emotion).strip().strip("<|>").lower()
-            result["emotion"] = _EMOTION_ZH.get(raw, str(emotion).strip())
+            if raw in ("emo_unknown", "unknown", "none"):
+                # 模型没把握 → 当作没识别到，不给 AI 塞垃圾 token
+                result["emotion"] = ""
+            else:
+                result["emotion"] = _EMOTION_ZH.get(raw, str(emotion).strip())
         lang = getattr(r, "lang", None)
         if lang:
             result["language"] = str(lang).strip().strip("<|>")
