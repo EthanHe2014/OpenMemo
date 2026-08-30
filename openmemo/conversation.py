@@ -501,7 +501,7 @@ SWITCHABLE_USERS = {"test"}
 
 async def process_message(session_id: str, user_message: str,
                           speak_response: bool = True, speaker: str = None,
-                          emotion: str = None) -> str:
+                          emotion: str = None, event: str = None) -> str:
     """Handle a user message. Returns the reply text."""
     """Handle a user message.
 
@@ -515,7 +515,7 @@ async def process_message(session_id: str, user_message: str,
     conv_manager.add_message(session_id, "user", user_message, speaker=speaker)
 
     context = conv_manager.get_context_for_ai(session_id)
-    result = await analyze_intent(user_message, context, speaker=speaker, emotion=emotion)
+    result = await analyze_intent(user_message, context, speaker=speaker, emotion=emotion, event=event)
 
     reply = result.get("reply") or "嗯，我在听，你说～"
 

@@ -161,9 +161,9 @@ final class OpenMemoAPI: @unchecked Sendable {
     }
 
     // MARK: - 对话
-    func chat(message: String, sessionId: String, speaker: String? = nil, emotion: String? = nil) async throws -> ChatResult {
+    func chat(message: String, sessionId: String, speaker: String? = nil, emotion: String? = nil, event: String? = nil) async throws -> ChatResult {
         // speak: true → 服务端用 Edge TTS（XiaoxiaoNeural）朗读回复，与提醒同声
-        let reqBody = ChatRequest(message: message, sessionId: sessionId, speak: true, speaker: speaker, emotion: emotion)
+        let reqBody = ChatRequest(message: message, sessionId: sessionId, speak: true, speaker: speaker, emotion: emotion, event: event)
         let jsonData = try encoder.encode(reqBody)
         var req = URLRequest(url: URL(string: "\(baseURL)/api/chat")!)
         req.httpMethod = "POST"
@@ -193,17 +193,18 @@ final class OpenMemoAPI: @unchecked Sendable {
         _ = try? await URLSession.shared.data(for: req)
     }
 
-    /// 本地离线语音情绪识别（SenseVoice）：WAV → 情绪标签（高兴/悲伤/生气/…）
+    /// 本地离线语音情绪识别（SenseVoice）：WAV → (情绪标签, 声音事件)
     /// 失败/无模型时返回 nil（不影响聊天流程）。
-    func detectEmotion(wavData: Data) async -> String? {
+    func detectEmotion(wavData: Data) async -> (emotion: String?, event: String?) {
         var req = URLRequest(url: URL(string: "\(baseURL)/api/emotion")!)
         req.httpMethod = "POST"
         req.setValue("audio/wav", forHTTPHeaderField: "Content-Type")
         req.httpBody = wavData
         req.timeoutInterval = 30
         guard let (data, _) = try? await URLSession.shared.data(for: req),
-              let resp = try? decoder.decode(EmotionResponse.self, from: data),
-              !resp.emotion.isEmpty else { return nil }
-        return resp.emotion
+              let resp = try? decoder.decode(EmotionResponse.self, from: data) else { return (nil, nil) }
+        let emo = resp.emotion.isEmpty ? nil : resp.emotion
+        let ev = resp.event?.isEmpty == true ? nil : resp.event
+        return (emo, ev)
     }
 }

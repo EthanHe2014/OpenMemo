@@ -18,6 +18,18 @@ MODEL_DIR = Path(__file__).resolve().parent.parent / "models" / "sherpa-onnx-sen
 
 _recognizer = None  # 懒加载单例（SenseVoice 模型 ~1GB，加载慢，只做一次）
 
+# 声音事件标签映射（<|Laugh|> 这类 token → 中文；未知保持原样）
+_EVENT_ZH = {
+    "speech": "说话",
+    "bgm": "背景音乐",
+    "applause": "掌声",
+    "laugh": "笑声",
+    "cry": "哭声",
+    "sneeze": "喷嚏",
+    "breath": "呼吸",
+    "cough": "咳嗽",
+}
+
 # 情绪标签映射（模型输出 <|HAPPY|> 这类 token → 中文；未知保持原样）
 _EMOTION_ZH = {
     "happy": "高兴",
@@ -142,7 +154,7 @@ def _read_pcm(wav_path: Path):
 def detect_emotion(wav_path: str | Path) -> dict:
     """识别一段 WAV 的情绪。返回 {"text", "emotion", "language"}。
     失败时 emotion/text 为空字符串。"""
-    result = {"text": "", "emotion": "", "language": ""}
+    result = {"text": "", "emotion": "", "language": "", "event": ""}
     if not emotion_available():
         print("[情绪] SenseVoice 模型缺失，跳过")
         return result
@@ -180,6 +192,13 @@ def detect_emotion(wav_path: str | Path) -> dict:
         else:
             # 压根没输出情绪标签 → 也默认中性
             result["emotion"] = "中性"
+        # 声音事件（笑声/哭声/掌声…）：文本看不到的东西
+        ev = getattr(r, "event", None)
+        if ev:
+            raw_ev = str(ev).strip().strip("<|>").lower()
+            mapped = _EVENT_ZH.get(raw_ev, "")
+            if mapped and mapped != "说话":   # 纯说话不算事件
+                result["event"] = mapped
         lang = getattr(r, "lang", None)
         if lang:
             result["language"] = str(lang).strip().strip("<|>")

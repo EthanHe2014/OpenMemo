@@ -209,11 +209,12 @@ async def chat(request: Request):
     speak_response = body.get("speak", False)
     speaker = body.get("speaker") or None
     emotion = body.get("emotion") or None   # 语音情绪（SenseVoice 本地识别）
+    event = body.get("event") or None       # 声音事件（笑声/哭声…）
     
     if not message:
         return JSONResponse({"error": "Message is required"}, status_code=400)
     
-    reply, switch_to = await process_message(session_id, message, speak_response=False, speaker=speaker, emotion=emotion)
+    reply, switch_to = await process_message(session_id, message, speak_response=False, speaker=speaker, emotion=emotion, event=event)
     # 后台朗读（Edge TTS XiaoxiaoNeural，与提醒同声）：回复立即返回，语音不阻塞聊天
     if speak_response:
         asyncio.create_task(speak_safe(reply))
@@ -305,7 +306,8 @@ async def emotion_endpoint(request: Request):
             os.unlink(tmp.name)
         except OSError:
             pass
-    return {"text": result.get("text", ""), "emotion": result.get("emotion", ""), "language": result.get("language", "")}
+    return {"text": result.get("text", ""), "emotion": result.get("emotion", ""),
+            "language": result.get("language", ""), "event": result.get("event", "")}
 
 
 @app.get("/api/conversations/{session_id}")

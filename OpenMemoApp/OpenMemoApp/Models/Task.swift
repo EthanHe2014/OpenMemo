@@ -218,13 +218,15 @@ struct ChatRequest: Encodable {
     let speak: Bool
     let speaker: String?
     let emotion: String?
+    let event: String?
 
-    init(message: String, sessionId: String, speak: Bool, speaker: String? = nil, emotion: String? = nil) {
+    init(message: String, sessionId: String, speak: Bool, speaker: String? = nil, emotion: String? = nil, event: String? = nil) {
         self.message = message
         self.sessionId = sessionId
         self.speak = speak
         self.speaker = speaker
         self.emotion = emotion
+        self.event = event
     }
 
     enum CodingKeys: String, CodingKey {
@@ -233,6 +235,7 @@ struct ChatRequest: Encodable {
         case speak
         case speaker
         case emotion
+        case event
     }
 }
 
@@ -248,6 +251,7 @@ struct EmotionResponse: Codable {
     let text: String
     let emotion: String
     let language: String?
+    let event: String?
 }
 
 /// 聊天结果：回复文本 + 可能的用户切换信号（仅白名单用户 test 会带）

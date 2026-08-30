@@ -299,7 +299,7 @@ def _repair_candidates(text: str) -> list:
 
 
 async def analyze_intent(user_message: str, conversation_context: list = None,
-                        speaker: str = None, emotion: str = None) -> dict:
+                        speaker: str = None, emotion: str = None, event: str = None) -> dict:
     """Analyze user message for intent and extract slots.
 
     Injects current time, speaker identity + privacy rules so the AI
@@ -329,12 +329,14 @@ async def analyze_intent(user_message: str, conversation_context: list = None,
     time_context = f"\n\n## 当前时间\n现在是 {now.strftime('%Y年%m月%d日 %H:%M')}（{time_desc}，星期{['一','二','三','四','五','六','日'][now.weekday()]}）。解析时间时请参考当前时间。"
     
     # 说话人身份 + 隐私：已识别才给任务上下文；访客不给任何私密信息
-    if emotion:
-        print(f"[ai] 情绪感知：{emotion}（来自语音 SenseVoice）")
+    if emotion or event:
+        print(f"[ai] 情绪感知：emotion={emotion} event={event}（来自语音 SenseVoice）")
     if speaker:
         identity_context = f"\n\n## 当前说话人\n{speaker}（已通过语音识别确认）"
         # 情绪感知：SenseVoice 本地识别的语音情绪 → AI 调整语气
         if emotion:
+            if event:
+                identity_context += f"\n声音事件：{event}（真实检测，如笑声/哭声——文本里看不到的东西）"
             identity_context += (
                 f"\n当前说话人的语音情绪：{emotion}（由本地 SenseVoice 从语音语气识别，真实数据，不是猜测）"
                 f"\n用法：用户问「我是什么心情/情绪」时，直接告诉他识别结果（如：听起来有点生气/挺平静的/很开心），"
