@@ -48,9 +48,9 @@ struct MessageBubbleNew: View {
                             .font(.system(size: 8))
                         Text(speaker)
                             .font(OMFonts.caption2.weight(.medium))
-                        // 情绪：彩色小竖条（像迷你均衡器）
+                        // 情绪：彩色文字标签
                         if let emo = message.emotion, !emo.isEmpty {
-                            emotionStripes(emo)
+                            emotionLabel(emo)
                         }
                     }
                     .foregroundStyle(.white.opacity(0.45))
@@ -69,17 +69,14 @@ struct MessageBubbleNew: View {
         }, perform: {})
     }
     
-    /// 情绪彩色条纹（迷你均衡器）：不同情绪不同颜色
-    private func emotionStripes(_ emotion: String) -> some View {
-        let color = Self.emotionColor(emotion)
-        return HStack(alignment: .bottom, spacing: 1.5) {
-            ForEach(0..<4, id: \.self) { i in
-                Capsule()
-                    .fill(color)
-                    .frame(width: 2.5, height: 4 + CGFloat((i * 3 + 1) % 5))
-            }
-        }
-        .opacity(0.9)
+    /// 情绪文字标签：彩色小字（高兴绿 / 悲伤蓝 / 生气红 / 恐惧紫 / 惊讶橙 / 中性灰）
+    private func emotionLabel(_ emotion: String) -> some View {
+        Text(emotion)
+            .font(OMFonts.caption2.weight(.semibold))
+            .foregroundStyle(Self.emotionColor(emotion))
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(Self.emotionColor(emotion).opacity(0.15), in: Capsule())
     }
 
     /// 情绪 → 颜色（高兴绿 / 悲伤蓝 / 生气红 / 恐惧紫 / 惊讶橙 / 中性灰）
