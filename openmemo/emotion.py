@@ -163,16 +163,23 @@ def detect_emotion(wav_path: str | Path) -> dict:
         r = stream.result
 
         result["text"] = (r.text or "").strip()
+        # SenseVoice 情绪标签偶尔缺失（同款音频有时给有时不给）：
+        # 识别到了语音但没情绪 → 默认中性，保证 AI 永远有数据可用
+        if not result["text"]:
+            return result
         # 情绪/语种字段：新版本 sherpa-onnx 才有，用 getattr 兼容
         emotion = getattr(r, "emotion", None)
         if emotion:
             # 去掉 <| |> 特殊 token 外壳，再映射中文
             raw = str(emotion).strip().strip("<|>").lower()
             if raw in ("emo_unknown", "unknown", "none"):
-                # 模型没把握 → 当作没识别到，不给 AI 塞垃圾 token
-                result["emotion"] = ""
+                # 模型没把握 → 默认中性（识别到语音但情绪不明）
+                result["emotion"] = "中性"
             else:
                 result["emotion"] = _EMOTION_ZH.get(raw, str(emotion).strip())
+        else:
+            # 压根没输出情绪标签 → 也默认中性
+            result["emotion"] = "中性"
         lang = getattr(r, "lang", None)
         if lang:
             result["language"] = str(lang).strip().strip("<|>")
