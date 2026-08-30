@@ -195,7 +195,9 @@ final class ChatViewModel {
                 let (identified, confidence) = await Self.identifySpeaker(from: data)
                 Self.logSI("identify result: \(identified ?? "nil") conf=\(confidence ?? -1) (audio \(data.count)B, model ready)")
                 // 置信度太低 → 不算识别（避免把垃圾结果当说话人）
-                let finalSpeaker = ((identified != nil && (confidence ?? 0) >= 0.6) ? identified : nil) ?? selectedSpeaker
+                // 回退链：识别结果 → 手动选的人 → 当前已解锁的人（与打字消息一致）
+                let fallbackSpeaker = selectedSpeaker ?? unlockedSpeaker
+                let finalSpeaker = ((identified != nil && (confidence ?? 0) >= 0.6) ? identified : nil) ?? fallbackSpeaker
                 // 识别出说话人 → 解锁 TA 的专属会话（其余保持锁定）
                 if let sp = finalSpeaker {
                     unlockSpeaker(sp)
@@ -205,13 +207,15 @@ final class ChatViewModel {
             }
         } else {
             Self.logSI("no identify: audio=\(audioData?.count ?? -1)B modelReady=\(SpeakerRecognizer.shared.isModelReady)")
-            let userText = Self.prefixSpeaker(selectedSpeaker, trimmed)
+            // 模型不可用：手动选的人优先，其次当前已解锁的人（与打字消息一致）
+            let fallbackSpeaker = selectedSpeaker ?? unlockedSpeaker
+            let userText = Self.prefixSpeaker(fallbackSpeaker, trimmed)
             messages.append(ChatMessage(role: .user, text: userText))
             isSending = true
             errorMessage = nil
             let sessionId = currentSessionId
             Task {
-                await self.finishSend(userText: userText, sessionId: sessionId, speaker: selectedSpeaker)
+                await self.finishSend(userText: userText, sessionId: sessionId, speaker: fallbackSpeaker)
             }
         }
     }
