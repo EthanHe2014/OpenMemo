@@ -377,6 +377,10 @@ final class VoiceInputManager {
         stop()
         isRearming = false
 
+        // 打断：如果 TTS 正在播放（AI 回复/提醒），立刻停掉，
+        // 这样旧语音不会盖住命令，录音也不会录进 TTS 尾巴
+        await OpenMemoAPI.shared.stopSpeak()
+
         // 开全新留言会话（先于应答启动，预热引擎；开头 2.5s 剥离开头噪音）
         stripAckUntil = Date().addingTimeInterval(2.5)
         startVoiceInput()
