@@ -138,7 +138,9 @@ def run_watchdog(hours: int = 24, auto_fix: bool = True) -> list:
             except (ValueError, TypeError):
                 continue
             window_start = user_dt - timedelta(minutes=1)
-            window_end = reply_dt + timedelta(minutes=1)
+            # ⚠️ 宽松到 3 分钟：AI 常在回复后一小会儿才落地任务（L1 补建/多轮），
+            # 1 分钟窗口会产生"任务其实建了"的假告警，然后每 60s 重复弹通知
+            window_end = reply_dt + timedelta(minutes=3)
             # 按会话核对落地：同分钟别家会话建的任务不算数
             landed = _tasks_created_in_window(window_start, window_end, session_id=sid)
             # 任务可能已落地但随后被用户删除/自动清理：删除留痕里能匹配到

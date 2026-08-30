@@ -445,8 +445,12 @@ def start_watchdog():
     def watchdog_tick():
         try:
             problems = run_watchdog(hours=24)
+            tm = TaskManager()
             for p in problems:
                 print(f"[看护] {p}")
+                # 只弹新问题的通知：同一问题 24h 内已报过 → 不再弹（防每 60s 响一次）
+                if tm.alert_exists(p):
+                    continue
                 try:
                     show_notification("OpenMemo 看护", p)
                 except Exception:
