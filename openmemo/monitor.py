@@ -64,12 +64,14 @@ def verify_landing(user_text: str, reply_text: str, action: str,
     problems = []
     try:
         from .tasks import TaskManager
+        from .conversation import _session_speaker
         tm = TaskManager()
+        alert_owner = _session_speaker(session_id)   # 告警归该会话的说话人（隐私）
         if action == "task_added" and created_count == 0:
             msg = f"[兑现校验] 会话 {session_id[:10]}… AI 声称已建任务但 0 个入库：『{reply_text[:30]}』"
             problems.append(msg)
             if not tm.alert_exists(msg):
-                tm.add_alert("promise", msg)
+                tm.add_alert("promise", msg, owner=alert_owner)
         elif (action in ("chat", "collecting")
               and reply_promises(reply_text)
               and user_has_task_intent(user_text)
@@ -78,7 +80,7 @@ def verify_landing(user_text: str, reply_text: str, action: str,
                    f"含承诺但未建任何任务")
             problems.append(msg)
             if not tm.alert_exists(msg):
-                tm.add_alert("promise", msg)
+                tm.add_alert("promise", msg, owner=alert_owner)
     except Exception as e:
         print(f"[监控] verify_landing 出错：{e}")
     return problems

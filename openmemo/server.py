@@ -108,16 +108,18 @@ async def list_tasks(status: str = None, limit: int = 20, include_deleted: bool 
 
 
 @app.get("/api/reminders")
-async def list_reminders(after_id: int = 0, limit: int = 20):
-    """已触发的提醒记录（AI 生成的原文），App 轮询后显示横幅。"""
-    reminders = task_manager.list_reminders(after_id=after_id, limit=limit)
+async def list_reminders(after_id: int = 0, limit: int = 20, owner: str = None):
+    """已触发的提醒记录（AI 生成的原文），App 轮询后显示横幅。
+    owner=说话人 时只返回 TA 的提醒（隐私）。"""
+    reminders = task_manager.list_reminders(after_id=after_id, limit=limit, owner=owner)
     return {"reminders": reminders, "count": len(reminders)}
 
 
 @app.get("/api/alerts")
-async def list_alerts(after_id: int = 0, limit: int = 20):
-    """看护告警（watchdog 发现的问题/自动处理），App 轮询后显示横幅。"""
-    alerts = task_manager.list_alerts(after_id=after_id, limit=limit)
+async def list_alerts(after_id: int = 0, limit: int = 20, owner: str = None):
+    """看护告警（watchdog 发现的问题/自动处理），App 轮询后显示横幅。
+    owner=说话人 时只返回 TA 的告警（隐私）。"""
+    alerts = task_manager.list_alerts(after_id=after_id, limit=limit, owner=owner)
     return {"alerts": alerts, "count": len(alerts)}
 
 
@@ -160,8 +162,14 @@ async def create_task(request: Request):
 
 @app.patch("/api/tasks/{task_id}")
 async def update_task(task_id: int, request: Request):
-    """Update a task (reschedules when trigger_time changes)"""
+    """Update a task (reschedules when trigger_time changes).
+    owner 指定时只能改自己的任务（隐私）。"""
     body = await request.json()
+    owner = body.pop("owner", None)
+    if owner:
+        existing = task_manager.get_task(task_id)
+        if not existing or existing.get("owner") != owner:
+            return JSONResponse({"error": "Not your task"}, status_code=403)
     task = task_manager.update_task(task_id, **body)
     if not task:
         return JSONResponse({"error": "Task not found"}, status_code=404)
@@ -173,8 +181,12 @@ async def update_task(task_id: int, request: Request):
 
 
 @app.delete("/api/tasks/{task_id}")
-async def delete_task(task_id: int):
-    """Soft-delete a task（可恢复）"""
+async def delete_task(task_id: int, owner: str = None):
+    """Soft-delete a task（可恢复）。owner 指定时只能删自己的任务（隐私）。"""
+    if owner:
+        existing = task_manager.get_task(task_id)
+        if not existing or existing.get("owner") != owner:
+            return JSONResponse({"error": "Not your task"}, status_code=403)
     success = task_manager.delete_task(task_id)
     return {"success": success}
 

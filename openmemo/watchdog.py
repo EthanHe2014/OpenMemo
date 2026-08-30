@@ -194,9 +194,12 @@ def run_watchdog(hours: int = 24, auto_fix: bool = True) -> list:
                     tm.add_alert("autofix", fix_msg)
 
     # ── 3. 疑似重复（近 24h 新建，同内容+同时间 3 分钟内）──
+    # ⚠️ 只对比同一 owner 的任务：两个人各自建“买牛奶”不是重复，不能删别人的
     recent = [t for t in _all_tasks() if t["created_at"] and t["created_at"] >= since.strftime("%Y-%m-%d %H:%M:%S")]
     for i, a in enumerate(recent):
         for b in recent[i + 1:]:
+            if a.get("owner") != b.get("owner"):
+                continue
             if a["content"] == b["content"] and a["trigger_time"] and a["trigger_time"] == b["trigger_time"]:
                 try:
                     da = datetime.strptime(a["created_at"], "%Y-%m-%d %H:%M:%S")

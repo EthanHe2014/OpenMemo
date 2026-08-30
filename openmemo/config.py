@@ -79,17 +79,6 @@ def _save_settings(data: dict):
     tmp.replace(SETTINGS_PATH)
 
 
-def get_setting(key: str):
-    """读取运行时配置：settings.json > .env > 默认值。"""
-    if key not in CONFIG_KEYS:
-        return None
-    env_name, default, _, _ = CONFIG_KEYS[key]
-    settings = _load_settings()
-    if key in settings and settings[key] not in (None, ""):
-        return settings[key]
-    return os.getenv(env_name, default)
-
-
 def set_setting(key: str, value) -> bool:
     """写入运行时配置并持久化。返回是否成功。"""
     if key not in CONFIG_KEYS:

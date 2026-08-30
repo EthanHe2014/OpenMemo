@@ -151,6 +151,18 @@ def init_db():
         created_at TEXT DEFAULT (datetime('now', 'localtime'))
     )
     """)
+
+    # 隐私：提醒/告警归说话人（谁的任务提醒、谁的会话告警 → 只给 TA 看）
+    try:
+        cursor.execute("ALTER TABLE reminders ADD COLUMN owner TEXT DEFAULT NULL")
+        print("Migrated: added owner column to reminders")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE alerts ADD COLUMN owner TEXT DEFAULT NULL")
+        print("Migrated: added owner column to alerts")
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
 
     conn.commit()
@@ -460,51 +472,65 @@ class TaskManager:
         conn.close()
         return [dict(row) for row in rows]
     
-    def search_tasks(self, query: str, include_deleted: bool = False) -> List[dict]:
-        """Search tasks by content（默认排除软删除）。"""
+    def search_tasks(self, query: str, include_deleted: bool = False, owner: str = None) -> List[dict]:
+        """Search tasks by content（默认排除软删除）。owner 指定时只搜 TA 的任务。"""
         conn = get_db()
         cursor = conn.cursor()
         deleted_filter = "" if include_deleted else " AND deleted_at IS NULL"
+        owner_filter = " AND owner = ?" if owner else ""
+        args = (f"%{query}%",)
+        if owner:
+            args = (f"%{query}%", owner)
         cursor.execute(
-            f"SELECT * FROM tasks WHERE content LIKE ? AND status != 'cancelled' {deleted_filter} ORDER BY trigger_time ASC",
-            (f"%{query}%",)
+            f"SELECT * FROM tasks WHERE content LIKE ? AND status != 'cancelled' {deleted_filter}{owner_filter} ORDER BY trigger_time ASC",
+            args
         )
         rows = cursor.fetchall()
         conn.close()
         return [dict(row) for row in rows]
 
     # ── 提醒送达记录（App 轮询显示 AI 提醒原文）──────────────
-    def add_reminder(self, task_id: int, content: str, message: str):
-        """记录一次已触发的提醒（AI 生成的原文）。"""
+    def add_reminder(self, task_id: int, content: str, message: str, owner: str = None):
+        """记录一次已触发的提醒（AI 生成的原文）。owner：任务归属人。"""
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO reminders (task_id, content, message) VALUES (?, ?, ?)",
-            (task_id, content, message),
+            "INSERT INTO reminders (task_id, content, message, owner) VALUES (?, ?, ?, ?)",
+            (task_id, content, message, owner),
         )
         conn.commit()
         conn.close()
 
-    def list_reminders(self, after_id: int = 0, limit: int = 20) -> List[dict]:
-        """列出 reminder_id > after_id 的提醒记录（最新在前）。"""
+    def list_reminders(self, after_id: int = 0, limit: int = 20, owner: str = None) -> List[dict]:
+        """列出 reminder_id > after_id 的提醒记录（最新在前）。
+        owner 指定时只返回 TA 的提醒（隐私：不混入别人的任务内容）。"""
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute(
-            """SELECT reminder_id, task_id, content, message, created_at
-               FROM reminders WHERE reminder_id > ?
-               ORDER BY reminder_id DESC LIMIT ?""",
-            (after_id, limit),
-        )
+        if owner:
+            cursor.execute(
+                """SELECT reminder_id, task_id, content, message, created_at
+                   FROM reminders WHERE reminder_id > ? AND owner = ?
+                   ORDER BY reminder_id DESC LIMIT ?""",
+                (after_id, owner, limit),
+            )
+        else:
+            cursor.execute(
+                """SELECT reminder_id, task_id, content, message, created_at
+                   FROM reminders WHERE reminder_id > ?
+                   ORDER BY reminder_id DESC LIMIT ?""",
+                (after_id, limit),
+            )
         rows = cursor.fetchall()
         conn.close()
         return [dict(row) for row in rows]
 
     # ── 看护告警（watchdog 发现的问题，App 轮询显示）──────────
-    def add_alert(self, alert_type: str, message: str):
-        """记录一条看护告警。"""
+    def add_alert(self, alert_type: str, message: str, owner: str = None):
+        """记录一条看护告警。owner：涉及哪个说话人的会话（可空=全局诊断）。"""
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO alerts (type, message) VALUES (?, ?)", (alert_type, message))
+        cursor.execute("INSERT INTO alerts (type, message, owner) VALUES (?, ?, ?)",
+                       (alert_type, message, owner))
         conn.commit()
         conn.close()
 
@@ -519,16 +545,25 @@ class TaskManager:
         conn.close()
         return row is not None
 
-    def list_alerts(self, after_id: int = 0, limit: int = 20) -> List[dict]:
-        """列出 alert_id > after_id 的告警（最新在前）。"""
+    def list_alerts(self, after_id: int = 0, limit: int = 20, owner: str = None) -> List[dict]:
+        """列出 alert_id > after_id 的告警（最新在前）。
+        owner 指定时只返回 TA 的告警（不泄露别人的会话内容）。"""
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute(
-            """SELECT alert_id, type, message, created_at
-               FROM alerts WHERE alert_id > ?
-               ORDER BY alert_id DESC LIMIT ?""",
-            (after_id, limit),
-        )
+        if owner:
+            cursor.execute(
+                """SELECT alert_id, type, message, created_at
+                   FROM alerts WHERE alert_id > ? AND owner = ?
+                   ORDER BY alert_id DESC LIMIT ?""",
+                (after_id, owner, limit),
+            )
+        else:
+            cursor.execute(
+                """SELECT alert_id, type, message, created_at
+                   FROM alerts WHERE alert_id > ?
+                   ORDER BY alert_id DESC LIMIT ?""",
+                (after_id, limit),
+            )
         rows = cursor.fetchall()
         conn.close()
         return [dict(row) for row in rows]

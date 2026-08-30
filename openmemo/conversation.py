@@ -311,14 +311,15 @@ async def _schedule_appointment(appointment: dict, session_id: str, owner: str =
     scheduler_mod.schedule_task(db_task["task_id"], at)
 
 
-def _match_task_by_content(content: str, pending_first: bool = True) -> dict | None:
+def _match_task_by_content(content: str, pending_first: bool = True, owner: str = None) -> dict | None:
     """按内容定位任务：先精确匹配，再模糊匹配（LIKE）。
     避免 AI 说"删买牛奶"时误删"帮妈妈买牛奶"。
+    owner 指定时只在 TA 的任务里找（隐私：不能动别人的任务）。
     返回第一个命中的任务 dict，无则 None。"""
     if not content or not str(content).strip():
         return None
     content = str(content).strip()
-    matches = task_manager.search_tasks(content)
+    matches = task_manager.search_tasks(content, owner=owner)
     if not matches:
         return None
     # 精确匹配优先（完整内容相等）
@@ -327,6 +328,29 @@ def _match_task_by_content(content: str, pending_first: bool = True) -> dict | N
     if pending_first:
         pool = sorted(pool, key=lambda t: 0 if t["status"] == "pending" else 1)
     return pool[0]
+
+
+def _session_speaker(session_id: str) -> str | None:
+    """查会话最近一次识别的说话人（从 conversation slots 里取，用于告警归属）。"""
+    try:
+        import sqlite3
+        from .config import DB_PATH
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT slots FROM conversations WHERE session_id=? AND slots IS NOT NULL "
+            "AND slots LIKE ? ORDER BY conv_id DESC LIMIT 1",
+            (session_id, '%"speaker"%'),
+        ).fetchone()
+        conn.close()
+        if row:
+            import json
+            slots = json.loads(row["slots"])
+            sp = (slots or {}).get("speaker")
+            return str(sp).strip() if sp else None
+    except Exception:
+        pass
+    return None
 
 
 async def _apply_ai_action(result: dict, session_id: str, owner: str = None):
@@ -396,7 +420,7 @@ async def _apply_ai_action(result: dict, session_id: str, owner: str = None):
         task = result.get("task")
         content = (task or {}).get("content")
         if content:
-            target = _match_task_by_content(content, pending_first=True)
+            target = _match_task_by_content(content, pending_first=True, owner=owner)
             if target:
                 task_manager.complete_task(target["task_id"])
         return
@@ -406,7 +430,7 @@ async def _apply_ai_action(result: dict, session_id: str, owner: str = None):
         task = result.get("task") or {}
         content = task.get("content")
         if content:
-            target = _match_task_by_content(content, pending_first=True)
+            target = _match_task_by_content(content, pending_first=True, owner=owner)
             if target:
                 task_manager.delete_task(target["task_id"])
                 print(f"[conversation] task_deleted #{target['task_id']} {target['content']}")
@@ -437,7 +461,7 @@ async def _apply_ai_action(result: dict, session_id: str, owner: str = None):
         task = result.get("task") or {}
         content = task.get("content")
         if content:
-            target = _match_task_by_content(content, pending_first=True)
+            target = _match_task_by_content(content, pending_first=True, owner=owner)
             if target:
                 tid = target["task_id"]
                 updates = {}

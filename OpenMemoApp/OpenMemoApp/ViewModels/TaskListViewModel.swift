@@ -66,7 +66,7 @@ final class TaskListViewModel {
     /// 首次加载只记录游标，不弹历史告警。
     func pollAlerts() async {
         do {
-            let resp = try await api.listAlerts(afterId: lastSeenAlertId)
+            let resp = try await api.listAlerts(afterId: lastSeenAlertId, owner: currentOwner)
             guard !resp.alerts.isEmpty else { return }
             let newest = resp.alerts.max(by: { $0.alertId < $1.alertId })!
             lastSeenAlertId = newest.alertId
@@ -84,7 +84,7 @@ final class TaskListViewModel {
     /// 首次加载只记录游标，不弹历史提醒；之后每次发现新提醒才弹。
     func pollReminders() async {
         do {
-            let resp = try await api.listReminders(afterId: lastSeenReminderId)
+            let resp = try await api.listReminders(afterId: lastSeenReminderId, owner: currentOwner)
             let newestFirst = resp.reminders
             guard !newestFirst.isEmpty else { return }
             let newest = newestFirst.max(by: { $0.reminderId < $1.reminderId })!
@@ -111,7 +111,7 @@ final class TaskListViewModel {
     func toggleComplete(_ task: OpenMemoTask) async {
         let newStatus = task.isCompleted ? "pending" : "completed"
         do {
-            _ = try await api.updateTask(task.taskId, status: newStatus)
+            _ = try await api.updateTask(task.taskId, status: newStatus, owner: currentOwner)
             await load()
         } catch {
             self.errorMessage = error.localizedDescription
@@ -120,7 +120,7 @@ final class TaskListViewModel {
 
     func delete(_ task: OpenMemoTask) async {
         do {
-            _ = try await api.deleteTask(task.taskId)
+            _ = try await api.deleteTask(task.taskId, owner: currentOwner)
             await load()
         } catch {
             self.errorMessage = error.localizedDescription

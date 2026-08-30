@@ -61,7 +61,8 @@ async def _generate_reminder_message(content: str, priority: str) -> dict:
     priority_desc = {"high": "重要/紧急", "medium": "普通", "low": "不太紧急"}.get(priority, "普通")
     
     # 获取用户今天的其他待办任务，给AI更多上下文
-    pending_tasks = task_manager.list_tasks(status="pending", limit=10)
+    # ⚠️ 隐私：只给 TA 自己的待办，绝不把别人的任务混进提醒上下文
+    pending_tasks = task_manager.list_tasks(status="pending", limit=10, owner=task.get("owner"))
     other_tasks = [t for t in pending_tasks if t["content"] != content]
     task_summary = ""
     if other_tasks:
@@ -157,7 +158,7 @@ async def reminder_callback(task_id: int):
                 await speak(fallback, rate="+0%")
             except Exception:
                 pass
-            task_manager.add_reminder(task_id, content, fallback)
+            task_manager.add_reminder(task_id, content, fallback, owner=task.get("owner"))
             _finish_reminder(task)
             _arm_next(task)
         if executed:
@@ -200,7 +201,7 @@ async def reminder_callback(task_id: int):
         print(f"[提醒] 语音播报出错：{e}")
 
     # 记录提醒原文，App 轮询 /api/reminders 显示
-    task_manager.add_reminder(task_id, content, speech)
+    task_manager.add_reminder(task_id, content, speech, owner=task.get("owner"))
 
     # 标记已提醒 + 状态切换（一次性→已执行，循环→保持待办）
     _finish_reminder(task)
@@ -485,9 +486,9 @@ async def _execute_action_task(task: dict) -> bool:
     # skip_if_user_replied：原触发后用户发过消息 → 视为已回应，本次跳过
     if meta.get("skip_if_user_replied"):
         fired_at = task.get("trigger_time")
-        if fired_at and _user_replied_since(fired_at):
+        if fired_at and _user_replied_since(fired_at, owner=task.get("owner")):
             print(f"[执行] 任务 {task['task_id']} 触发后用户已回复，跳过本次跟进")
-            task_manager.add_reminder(task["task_id"], task["content"], "（跟进已跳过：用户已回复）")
+            task_manager.add_reminder(task["task_id"], task["content"], "（跟进已跳过：用户已回复）", owner=task.get("owner"))
             _finish_reminder(task)
             _arm_next(task)
             return True
@@ -546,7 +547,7 @@ async def _execute_action_task(task: dict) -> bool:
             await speak(output, rate="+0%")
         except Exception as e:
             print(f"[执行] 播报出错：{e}")
-        task_manager.add_reminder(task["task_id"], task["content"], output)
+        task_manager.add_reminder(task["task_id"], task["content"], output, owner=task.get("owner"))
         print(f"[执行] 播报：{output[:60]}")
 
     # 跟进（如"10分钟没回复再提醒"）
@@ -577,6 +578,7 @@ async def _execute_action_task(task: dict) -> bool:
                 is_recurring=None,
                 task_type="action",
                 meta_data=ft_meta,
+                owner=task.get("owner"),   # 跟进任务归原任务主人（隐私）
             )
             schedule_task(ft["task_id"], ft_time)
             print(f"[执行] 已安排跟进任务 #{ft['task_id']} @ {ft_time}：{ft_content} | {ft_what}")
@@ -586,17 +588,25 @@ async def _execute_action_task(task: dict) -> bool:
     return True
 
 
-def _user_replied_since(fired_at: str) -> bool:
-    """原任务触发后，用户是否发过消息（有则视为已回应）。"""
+def _user_replied_since(fired_at: str, owner: str = None) -> bool:
+    """原任务触发后，用户是否发过消息（有则视为已回应）。
+    owner 指定时只认 TA 的回复（别人的回复不能取消 TA 的跟进）。"""
     import sqlite3
     from .config import DB_PATH
     try:
         conn = sqlite3.connect(str(DB_PATH))
         cur = conn.cursor()
-        cur.execute(
-            "SELECT COUNT(*) FROM conversations WHERE role='user' AND created_at >= ?",
-            (fired_at,),
-        )
+        if owner:
+            cur.execute(
+                "SELECT COUNT(*) FROM conversations WHERE role='user' AND created_at >= ? "
+                "AND slots LIKE ?",
+                (fired_at, f'%"speaker": "{owner}"%'),
+            )
+        else:
+            cur.execute(
+                "SELECT COUNT(*) FROM conversations WHERE role='user' AND created_at >= ?",
+                (fired_at,),
+            )
         n = cur.fetchone()[0]
         conn.close()
         return n > 0
@@ -810,7 +820,7 @@ async def _execute_news_job(task: dict):
         print(f"[新闻] 语音播报出错：{e}")
 
     # 记录提醒原文，App 轮询 /api/reminders 显示
-    task_manager.add_reminder(task["task_id"], content, news_summary)
+    task_manager.add_reminder(task["task_id"], content, news_summary, owner=task.get("owner"))
 
     # 循环任务：安排明天同一时间继续
     await _schedule_next_daily_task(task, daily_hour)
@@ -838,7 +848,7 @@ async def _execute_travel_reminder(task: dict):
     except Exception as e:
         print(f"[出行] 语音播报出错：{e}")
     # 记录提醒原文，App 轮询 /api/reminders 显示
-    task_manager.add_reminder(task["task_id"], content, speech)
+    task_manager.add_reminder(task["task_id"], content, speech, owner=task.get("owner"))
     _finish_reminder(task)
 
 
@@ -859,7 +869,7 @@ async def _execute_schedule_reminder(task: dict):
             except Exception as e:
                 print(f"[日程] 语音播报出错：{e}")
             # 记录提醒原文，App 轮询 /api/reminders 显示
-            task_manager.add_reminder(task["task_id"], content, remind_text)
+            task_manager.add_reminder(task["task_id"], content, remind_text, owner=task.get("owner"))
             _finish_reminder(task)
             remind_hour = _parse_remind_hour(meta.get("remind_time"))
             await _schedule_next_daily_task(task, remind_hour)
@@ -908,7 +918,7 @@ async def _execute_schedule_reminder(task: dict):
         print(f"[日程] 语音播报出错：{e}")
 
     # 记录提醒原文，App 轮询 /api/reminders 显示
-    task_manager.add_reminder(task["task_id"], content, reminder_text)
+    task_manager.add_reminder(task["task_id"], content, reminder_text, owner=task.get("owner"))
 
     # 安排明天继续
     remind_hour = _parse_remind_hour(meta.get("remind_time"))

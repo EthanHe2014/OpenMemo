@@ -41,17 +41,21 @@ final class OpenMemoAPI: @unchecked Sendable {
     }
 
     // MARK: - 看护告警
-    func listAlerts(afterId: Int = 0) async throws -> AlertListResponse {
+    func listAlerts(afterId: Int = 0, owner: String? = nil) async throws -> AlertListResponse {
         var components = URLComponents(string: "\(baseURL)/api/alerts")!
-        components.queryItems = [URLQueryItem(name: "after_id", value: String(afterId))]
+        var items = [URLQueryItem(name: "after_id", value: String(afterId))]
+        if let owner { items.append(URLQueryItem(name: "owner", value: owner)) }
+        components.queryItems = items
         let (data, _) = try await URLSession.shared.data(from: components.url!)
         return try decoder.decode(AlertListResponse.self, from: data)
     }
 
     // MARK: - 提醒记录（AI 提醒原文）
-    func listReminders(afterId: Int = 0) async throws -> ReminderListResponse {
+    func listReminders(afterId: Int = 0, owner: String? = nil) async throws -> ReminderListResponse {
         var components = URLComponents(string: "\(baseURL)/api/reminders")!
-        components.queryItems = [URLQueryItem(name: "after_id", value: String(afterId))]
+        var items = [URLQueryItem(name: "after_id", value: String(afterId))]
+        if let owner { items.append(URLQueryItem(name: "owner", value: owner)) }
+        components.queryItems = items
         let (data, _) = try await URLSession.shared.data(from: components.url!)
         return try decoder.decode(ReminderListResponse.self, from: data)
     }
@@ -81,13 +85,14 @@ final class OpenMemoAPI: @unchecked Sendable {
         return resp.task
     }
 
-    func updateTask(_ id: Int, content: String? = nil, triggerTime: String? = nil, priority: String? = nil, status: String? = nil, notes: String? = nil) async throws -> OpenMemoTask {
+    func updateTask(_ id: Int, content: String? = nil, triggerTime: String? = nil, priority: String? = nil, status: String? = nil, notes: String? = nil, owner: String? = nil) async throws -> OpenMemoTask {
         var body: [String: Any?] = [:]
         body["content"] = content
         body["trigger_time"] = triggerTime
         body["priority"] = priority
         body["status"] = status
         body["notes"] = notes
+        body["owner"] = owner
         let jsonData = try JSONSerialization.data(withJSONObject: body.compactMapValues { $0 })
         var req = URLRequest(url: URL(string: "\(baseURL)/api/tasks/\(id)")!)
         req.httpMethod = "PATCH"
@@ -98,8 +103,10 @@ final class OpenMemoAPI: @unchecked Sendable {
         return resp.task
     }
 
-    func deleteTask(_ id: Int) async throws -> Bool {
-        var req = URLRequest(url: URL(string: "\(baseURL)/api/tasks/\(id)")!)
+    func deleteTask(_ id: Int, owner: String? = nil) async throws -> Bool {
+        var components = URLComponents(string: "\(baseURL)/api/tasks/\(id)")!
+        if let owner { components.queryItems = [URLQueryItem(name: "owner", value: owner)] }
+        var req = URLRequest(url: components.url!)
         req.httpMethod = "DELETE"
         let (data, _) = try await URLSession.shared.data(for: req)
         let resp = try JSONDecoder().decode([String: Bool].self, from: data)
