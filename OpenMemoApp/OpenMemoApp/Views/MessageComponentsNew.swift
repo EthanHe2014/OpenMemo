@@ -41,13 +41,17 @@ struct MessageBubbleNew: View {
                         .padding(.horizontal, 4)
                 }
                 
-                // 说话人标签（气泡底部）
+                // 说话人标签（气泡底部）+ 情绪彩色条纹
                 if let speaker = message.speaker, !speaker.isEmpty {
                     HStack(spacing: 3) {
                         Image(systemName: "person.fill")
                             .font(.system(size: 8))
                         Text(speaker)
                             .font(OMFonts.caption2.weight(.medium))
+                        // 情绪：彩色小竖条（像迷你均衡器）
+                        if let emo = message.emotion, !emo.isEmpty {
+                            emotionStripes(emo)
+                        }
                     }
                     .foregroundStyle(.white.opacity(0.45))
                     .padding(.horizontal, 4)
@@ -65,6 +69,31 @@ struct MessageBubbleNew: View {
         }, perform: {})
     }
     
+    /// 情绪彩色条纹（迷你均衡器）：不同情绪不同颜色
+    private func emotionStripes(_ emotion: String) -> some View {
+        let color = Self.emotionColor(emotion)
+        return HStack(alignment: .bottom, spacing: 1.5) {
+            ForEach(0..<4, id: \.self) { i in
+                Capsule()
+                    .fill(color)
+                    .frame(width: 2.5, height: 4 + CGFloat((i * 3 + 1) % 5))
+            }
+        }
+        .opacity(0.9)
+    }
+
+    /// 情绪 → 颜色（高兴绿 / 悲伤蓝 / 生气红 / 恐惧紫 / 惊讶橙 / 中性灰）
+    static func emotionColor(_ emotion: String) -> Color {
+        switch emotion {
+        case "高兴", "愉悦", "兴奋": return Color(hex: "34D399")
+        case "悲伤": return Color(hex: "60A5FA")
+        case "生气", "厌恶": return Color(hex: "FF3B30")
+        case "恐惧": return Color(hex: "A78BFA")
+        case "惊讶": return Color(hex: "FBBF24")
+        default: return Color.white.opacity(0.4)
+        }
+    }
+
     private var messageBackground: some View {
         Group {
             if message.role == .user {

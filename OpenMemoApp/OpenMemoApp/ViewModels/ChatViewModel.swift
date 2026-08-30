@@ -6,6 +6,7 @@ struct ChatMessage: Identifiable, Equatable {
     let role: Role
     let text: String
     var speaker: String? = nil
+    var emotion: String? = nil      // 语音情绪（SenseVoice：高兴/生气/…）
     var timestamp: Date = Date()   // 消息时间（分钟级时间戳用）
 
     enum Role {
@@ -287,7 +288,7 @@ final class ChatViewModel {
 
         // 展示时去掉 "[名字] " 前缀，speaker 单独存（气泡底部显示）；发给 AI 的仍带前缀
         let displayText = Self.extractSpeaker(from: userText)?.clean ?? userText
-        self.messages.append(ChatMessage(role: .user, text: displayText, speaker: speaker))
+        self.messages.append(ChatMessage(role: .user, text: displayText, speaker: speaker, emotion: emotion))
         defer { self.isSending = false }
         do {
             let result = try await api.chat(message: userText, sessionId: targetSession, speaker: speaker, emotion: emotion)
