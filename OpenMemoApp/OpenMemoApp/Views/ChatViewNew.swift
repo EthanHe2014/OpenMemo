@@ -274,8 +274,24 @@ struct ChatViewNew: View {
         }
         .frame(maxWidth: .infinity)
         .background(
-            OMColors.surface
-                .overlay(.ultraThinMaterial)
+            // 暗色极光：与侧边栏/聊天页同一套视觉语言，不再是灰条
+            ZStack {
+                OMColors.background.opacity(0.96)
+                // 底部紫色微光
+                Circle()
+                    .fill(LinearGradient(colors: [Color(hex: "7C6FF0"), Color(hex: "C46BF0")],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: 380, height: 380)
+                    .blur(radius: 120)
+                    .offset(x: -60, y: 200)
+                    .opacity(0.34)
+                // 顶部发丝分隔线
+                Rectangle()
+                    .fill(LinearGradient(colors: [.white.opacity(0.10), .clear],
+                                         startPoint: .top, endPoint: .bottom))
+                    .frame(height: 1)
+                    .frame(maxHeight: .infinity, alignment: .top)
+            }
         )
     }
     
