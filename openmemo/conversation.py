@@ -54,6 +54,9 @@ def _extract_hm_cn(t: str):
         h += 12
     if h == 24:
         h = 0
+    # 午夜12点 = 凌晨0点（不是中午）
+    if h == 12 and "午夜" in t:
+        h = 0
     if mm > 59:
         mm = 0
     return h, mm
@@ -221,7 +224,7 @@ def _create_task_from_ai_task(task: dict, session_id: str, owner: str = None) ->
             sub = dict(task)
             sub["recurring"] = "每天"
             sub["time"] = hm
-            one = _create_task_from_ai_task(sub, session_id)
+            one = _create_task_from_ai_task(sub, session_id, owner)   # ⚠️ 必须带 owner
             if one:
                 created_all.append(one)
         return created_all[0] if created_all else None

@@ -379,13 +379,6 @@ final class ChatViewModel {
             currentTitle = String(text.prefix(30))
         }
 
-        if currentSessionId.isEmpty {
-            currentSessionId = "ios_" + UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "")
-        }
-        // 从第一条用户消息生成标题（类似 DeepSeek）。
-        if messages.isEmpty {
-            currentTitle = String(text.prefix(30))
-        }
         inputText = ""
         isSending = true
         errorMessage = nil

@@ -65,6 +65,8 @@ final class TaskListViewModel {
     /// 轮询看护告警（watchdog 发现的问题/自动处理），有新告警就亮横幅。
     /// 首次加载只记录游标，不弹历史告警。
     func pollAlerts() async {
+        // 没识别出说话人（锁定）：不拉任何提醒/告警，避免横幅泄露别人的内容
+        guard currentOwner != nil else { return }
         do {
             let resp = try await api.listAlerts(afterId: lastSeenAlertId, owner: currentOwner)
             guard !resp.alerts.isEmpty else { return }
@@ -83,6 +85,8 @@ final class TaskListViewModel {
     /// 轮询已触发的提醒（AI 提醒原文），有新提醒就亮横幅。
     /// 首次加载只记录游标，不弹历史提醒；之后每次发现新提醒才弹。
     func pollReminders() async {
+        // 没识别出说话人（锁定）：不拉任何提醒/告警，避免横幅泄露别人的内容
+        guard currentOwner != nil else { return }
         do {
             let resp = try await api.listReminders(afterId: lastSeenReminderId, owner: currentOwner)
             let newestFirst = resp.reminders
