@@ -194,16 +194,21 @@ struct ChatViewNew: View {
         .scrollDismissesKeyboard(.interactively)
     }
     
-    /// 是否在该消息前显示分钟时间戳：第一条消息，或与上一条不在同一分钟
+    /// 是否在该消息前显示时间戳：第一条消息，或与上一条不在同一个 5 分钟桶
     private func shouldShowTimestamp(at index: Int) -> Bool {
         guard index > 0 else { return true }
-        let cal = Calendar.current
-        let prev = chatVM.messages[index - 1].timestamp
-        let cur = chatVM.messages[index].timestamp
-        return !cal.isDate(prev, equalTo: cur, toGranularity: .minute)
+        return fiveMinuteBucket(chatVM.messages[index - 1].timestamp)
+            != fiveMinuteBucket(chatVM.messages[index].timestamp)
     }
 
-    /// 居中的分钟时间戳（如 20:51）
+    /// 5 分钟一个桶（20:51 → 20:50 桶）：同一桶内只显示一次
+    private func fiveMinuteBucket(_ date: Date) -> Int {
+        let cal = Calendar.current
+        let comps = cal.dateComponents([.hour, .minute], from: date)
+        return (comps.hour ?? 0) * 12 + ((comps.minute ?? 0) / 5)
+    }
+
+    /// 居中的时间戳（如 20:51）
     private func timestampLabel(_ date: Date) -> some View {
         let fmt = DateFormatter()
         fmt.dateFormat = "HH:mm"
