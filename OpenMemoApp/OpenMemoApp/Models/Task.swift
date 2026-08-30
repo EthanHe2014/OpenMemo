@@ -212,17 +212,19 @@ struct TaskResponse: Codable {
     let success: Bool
 }
 
-struct ChatRequest: Codable {
+struct ChatRequest: Encodable {
     let message: String
     let sessionId: String
     let speak: Bool
     let speaker: String?
+    let emotion: String?
 
-    init(message: String, sessionId: String, speak: Bool, speaker: String? = nil) {
+    init(message: String, sessionId: String, speak: Bool, speaker: String? = nil, emotion: String? = nil) {
         self.message = message
         self.sessionId = sessionId
         self.speak = speak
         self.speaker = speaker
+        self.emotion = emotion
     }
 
     enum CodingKeys: String, CodingKey {
@@ -238,6 +240,13 @@ struct ChatResponse: Codable {
     let success: Bool
     let action: String?
     let speaker: String?
+}
+
+/// 语音情绪识别结果（SenseVoice）
+struct EmotionResponse: Codable {
+    let text: String
+    let emotion: String
+    let language: String?
 }
 
 /// 聊天结果：回复文本 + 可能的用户切换信号（仅白名单用户 test 会带）

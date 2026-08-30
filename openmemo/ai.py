@@ -299,7 +299,7 @@ def _repair_candidates(text: str) -> list:
 
 
 async def analyze_intent(user_message: str, conversation_context: list = None,
-                        speaker: str = None) -> dict:
+                        speaker: str = None, emotion: str = None) -> dict:
     """Analyze user message for intent and extract slots.
 
     Injects current time, speaker identity + privacy rules so the AI
@@ -331,6 +331,9 @@ async def analyze_intent(user_message: str, conversation_context: list = None,
     # 说话人身份 + 隐私：已识别才给任务上下文；访客不给任何私密信息
     if speaker:
         identity_context = f"\n\n## 当前说话人\n{speaker}（已通过语音识别确认）"
+        # 情绪感知：SenseVoice 本地识别的语音情绪 → AI 调整语气
+        if emotion:
+            identity_context += f"\n当前说话人的语音情绪：{emotion}（根据语气判断，供你调整回应方式：生气→先安抚，难过→温柔些，开心→一起开心）"
         try:
             tm = TaskManager()
             # 隐私：只给 AI 当前说话人自己的待办（owner 过滤，绝不混入别人的任务）

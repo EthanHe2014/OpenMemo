@@ -203,7 +203,10 @@ final class ChatViewModel {
                     unlockSpeaker(sp)
                 }
                 let userText = Self.prefixSpeaker(finalSpeaker, trimmed)
-                await self.finishSend(userText: userText, sessionId: sessionId, speaker: finalSpeaker)
+                // 语音情绪（SenseVoice 本地识别）：并发跑，不阻塞发消息
+                let emotion = await OpenMemoAPI.shared.detectEmotion(wavData: data)
+                Self.logSI("emotion: \(emotion ?? "nil")")
+                await self.finishSend(userText: userText, sessionId: sessionId, speaker: finalSpeaker, emotion: emotion)
             }
         } else {
             Self.logSI("no identify: audio=\(audioData?.count ?? -1)B modelReady=\(SpeakerRecognizer.shared.isModelReady)")
@@ -269,7 +272,7 @@ final class ChatViewModel {
     /// 发消息 + 等回复（sendVoice 与 send 共用）
     /// 说话人已识别 → 路由到该说话人专属会话（speaker_<名字>），
     /// AI 上下文只有这个人的聊天记录，天然隔离隐私。
-    private func finishSend(userText: String, sessionId: String, speaker: String? = nil) async {
+    private func finishSend(userText: String, sessionId: String, speaker: String? = nil, emotion: String? = nil) async {
         var targetSession = sessionId
         if let sp = speaker, !sp.isEmpty {
             let spSession = "speaker_\(sp)"
@@ -286,7 +289,7 @@ final class ChatViewModel {
         self.messages.append(ChatMessage(role: .user, text: displayText, speaker: speaker))
         defer { self.isSending = false }
         do {
-            let result = try await api.chat(message: userText, sessionId: targetSession, speaker: speaker)
+            let result = try await api.chat(message: userText, sessionId: targetSession, speaker: speaker, emotion: emotion)
             // 语音切换到 test（服务端白名单只放行 test，别的用户切不了）
             if result.action == "user_switched", let sp = result.speaker, !sp.isEmpty {
                 self.unlockSpeaker(sp)

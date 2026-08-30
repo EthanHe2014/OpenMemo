@@ -14,3 +14,4 @@ data/audio/*.mp3
 
 # 备份目录（勿提交）
 OpenMemo-Backup/
+models/sherpa-onnx-sense-voice-*/

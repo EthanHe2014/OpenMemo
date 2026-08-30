@@ -208,11 +208,12 @@ async def chat(request: Request):
     session_id = body.get("session_id", "api_user")
     speak_response = body.get("speak", False)
     speaker = body.get("speaker") or None
+    emotion = body.get("emotion") or None   # 语音情绪（SenseVoice 本地识别）
     
     if not message:
         return JSONResponse({"error": "Message is required"}, status_code=400)
     
-    reply, switch_to = await process_message(session_id, message, speak_response=False, speaker=speaker)
+    reply, switch_to = await process_message(session_id, message, speak_response=False, speaker=speaker, emotion=emotion)
     # 后台朗读（Edge TTS XiaoxiaoNeural，与提醒同声）：回复立即返回，语音不阻塞聊天
     if speak_response:
         asyncio.create_task(speak_safe(reply))
@@ -277,6 +278,34 @@ async def stt_transcribe(request: Request):
     if not text:
         return JSONResponse({"text": "", "engine": "sherpa-onnx"})
     return {"text": text, "engine": "sherpa-onnx"}
+
+
+@app.post("/api/emotion")
+async def emotion_endpoint(request: Request):
+    """本地离线语音情绪识别（SenseVoice）：WAV → {text, emotion, language}。
+    与 /api/stt 同输入格式（16kHz 16-bit mono WAV，或任意采样率自动重采样）。
+    """
+    from .emotion import emotion_available, detect_emotion
+
+    if not emotion_available():
+        return JSONResponse({"error": "SenseVoice 模型未安装"}, status_code=501)
+
+    body = await request.body()
+    if not body or len(body) < 100:
+        return JSONResponse({"error": "空的音频数据"}, status_code=400)
+
+    import tempfile, os
+    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    tmp.write(body)
+    tmp.close()
+    try:
+        result = detect_emotion(tmp.name)
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
+    return {"text": result.get("text", ""), "emotion": result.get("emotion", ""), "language": result.get("language", "")}
 
 
 @app.get("/api/conversations/{session_id}")
