@@ -273,10 +273,7 @@ struct ChatViewNew: View {
             inputBar
         }
         .frame(maxWidth: .infinity)
-        .background(
-            OMColors.surface
-                .overlay(.ultraThinMaterial)
-        )
+        // 没有灰条：输入区直接融入聊天背景，只留三个控件浮在上面
     }
     
     private var inputBar: some View {
