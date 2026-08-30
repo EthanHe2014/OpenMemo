@@ -178,9 +178,9 @@ struct SidebarViewNew: View {
     
     var body: some View {
         ZStack(alignment: .leading) {
-            // Backdrop
-            OMColors.background
-                .opacity(0.9)
+            // Backdrop: 轻遮罩（不盖死内容，点空白处关闭）
+            Color.black
+                .opacity(0.35)
                 .ignoresSafeArea()
                 .onTapGesture { close() }
             
@@ -233,11 +233,37 @@ struct SidebarViewNew: View {
             .frame(width: 320)
             .frame(maxHeight: .infinity)
             .background(
-                OMColors.surface
-                    .overlay(.ultraThinMaterial)
+                // 暗色极光玻璃：与聊天/任务页同一套视觉语言，不再是灰盒子
+                ZStack {
+                    OMColors.background.opacity(0.96)
+                    // 顶部紫色极光
+                    Circle()
+                        .fill(LinearGradient(colors: [Color(hex: "7C6FF0"), Color(hex: "C46BF0")],
+                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .frame(width: 460, height: 460)
+                        .blur(radius: 130)
+                        .offset(x: -60, y: -300)
+                        .opacity(0.28)
+                    // 底部蓝色微光
+                    Circle()
+                        .fill(Color(hex: "5B8DEF").opacity(0.16))
+                        .frame(width: 320, height: 320)
+                        .blur(radius: 110)
+                        .offset(x: 130, y: 320)
+                    // 极淡玻璃层，让内容在深底上更柔和
+                    Color.white.opacity(0.03)
+                }
+            )
+            .overlay(
+                // 右缘高光（分隔主区域）
+                Rectangle()
+                    .fill(LinearGradient(colors: [.white.opacity(0.14), .white.opacity(0.03)],
+                                         startPoint: .top, endPoint: .bottom))
+                    .frame(width: 1)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             )
             .clipShape(RoundedRectangle(cornerRadius: 0))
-            .shadow(color: .black.opacity(0.3), radius: 20, x: 10, y: 0)
+            .shadow(color: .black.opacity(0.5), radius: 26, x: 10, y: 0)
             .offset(x: isVisible ? 0 : -320)
             .animation(OMAnimations.spring, value: isVisible)
         }
@@ -406,11 +432,12 @@ struct SessionRow: View {
             .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(isSelected ? Color.white.opacity(0.1) : Color.clear)
+                    .fill(OMColors.primaryGradient)
+                    .opacity(isSelected ? 0.45 : 0)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(isSelected ? Color.white.opacity(0.2) : Color.clear, lineWidth: 1)
+                    .stroke(isSelected ? Color.white.opacity(0.28) : Color.white.opacity(0.06), lineWidth: 1)
             )
             .hoverGlow()
         }
