@@ -18,17 +18,19 @@ MODEL_DIR = Path(__file__).resolve().parent.parent / "models" / "sherpa-onnx-sen
 
 _recognizer = None  # 懒加载单例（SenseVoice 模型 ~1GB，加载慢，只做一次）
 
-# 情绪标签映射（模型输出英文标签 → 中文；未知保持原样）
+# 情绪标签映射（模型输出 <|HAPPY|> 这类 token → 中文；未知保持原样）
 _EMOTION_ZH = {
     "happy": "高兴",
     "sad": "悲伤",
     "angry": "生气",
+    "fearful": "恐惧",
     "fear": "恐惧",
+    "surprised": "惊讶",
     "surprise": "惊讶",
     "neutral": "中性",
     "hate": "厌恶",
+    "disgusted": "厌恶",
     "pleasant": "愉悦",
-    "disgust": "厌恶",
     "excited": "兴奋",
 }
 
@@ -133,10 +135,12 @@ def detect_emotion(wav_path: str | Path) -> dict:
         # 情绪/语种字段：新版本 sherpa-onnx 才有，用 getattr 兼容
         emotion = getattr(r, "emotion", None)
         if emotion:
-            result["emotion"] = _EMOTION_ZH.get(emotion.lower(), emotion)
+            # 去掉 <| |> 特殊 token 外壳，再映射中文
+            raw = str(emotion).strip().strip("<|>").lower()
+            result["emotion"] = _EMOTION_ZH.get(raw, str(emotion).strip())
         lang = getattr(r, "lang", None)
         if lang:
-            result["language"] = str(lang)
+            result["language"] = str(lang).strip().strip("<|>")
         print(f"[情绪] SenseVoice: emotion={result['emotion']} lang={result['language']} text={result['text'][:40]}")
     except Exception as e:
         print(f"[情绪] 识别出错：{e}")
