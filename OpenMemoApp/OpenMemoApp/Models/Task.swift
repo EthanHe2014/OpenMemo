@@ -232,6 +232,7 @@ struct ChatRequest: Encodable {
         case sessionId = "session_id"
         case speak
         case speaker
+        case emotion
     }
 }
 
