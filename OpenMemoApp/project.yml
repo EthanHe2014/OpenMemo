@@ -36,3 +36,10 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         MARKETING_VERSION: 1.1.0
         CURRENT_PROJECT_VERSION: 11
+schemes:
+  OpenMemoApp:
+    build:
+      targets:
+        OpenMemoApp: all
+    run:
+      config: Debug
