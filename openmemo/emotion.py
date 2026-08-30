@@ -59,8 +59,40 @@ def _get_recognizer():
 
 
 def _read_pcm(wav_path: Path):
-    """从 WAV 读出 (samples: list[float], sample_rate: int)。
+    """从音频文件读出 (samples: list[float], sample_rate: int)。
+    支持 WAV（RIFF）和 CAF（App 录音输出格式）——CAF 用 ffmpeg 转成 16k WAV。
     只处理 16-bit PCM；采样率不是 16k 先用 ffmpeg 重采样。"""
+    import array
+    try:
+        head = wav_path.open("rb").read(4)
+    except OSError:
+        return None, None
+
+    is_caf = head == b"caff"
+
+    if is_caf:
+        # CAF → ffmpeg 转 16k 单声道 WAV
+        import subprocess, tempfile, os
+        try:
+            tmp_out = tempfile.mktemp(suffix=".wav")
+            r = subprocess.run(
+                ["ffmpeg", "-y", "-i", str(wav_path), "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", tmp_out],
+                capture_output=True, timeout=30,
+            )
+            if r.returncode != 0:
+                try: os.unlink(tmp_out)
+                except OSError: pass
+                return None, None
+            with wave.open(tmp_out, "rb") as wf2:
+                sr = wf2.getframerate()
+                frames2 = wf2.readframes(wf2.getnframes())
+            os.unlink(tmp_out)
+            samples = array.array("h", frames2)
+            floats = [float(s) / 32768.0 for s in samples]
+            return floats, sr
+        except Exception:
+            return None, None
+
     try:
         with wave.open(str(wav_path), "rb") as wf:
             sr = wf.getframerate()
@@ -73,7 +105,6 @@ def _read_pcm(wav_path: Path):
     if sw != 2:
         return None, None
 
-    import array
     samples = array.array("h", frames)
     if n_channels > 1:
         # 取第一个声道
@@ -88,7 +119,7 @@ def _read_pcm(wav_path: Path):
                 tmp_in = tf.name
             tmp_out = tempfile.mktemp(suffix=".wav")
             r = subprocess.run(
-                ["ffmpeg", "-y", "-i", tmp_in, "-ar", "16000", "-ac", "1", tmp_out],
+                ["ffmpeg", "-y", "-i", tmp_in, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", tmp_out],
                 capture_output=True, timeout=30,
             )
             os.unlink(tmp_in)

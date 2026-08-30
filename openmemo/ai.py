@@ -329,6 +329,8 @@ async def analyze_intent(user_message: str, conversation_context: list = None,
     time_context = f"\n\n## 当前时间\n现在是 {now.strftime('%Y年%m月%d日 %H:%M')}（{time_desc}，星期{['一','二','三','四','五','六','日'][now.weekday()]}）。解析时间时请参考当前时间。"
     
     # 说话人身份 + 隐私：已识别才给任务上下文；访客不给任何私密信息
+    if emotion:
+        print(f"[ai] 情绪感知：{emotion}（来自语音 SenseVoice）")
     if speaker:
         identity_context = f"\n\n## 当前说话人\n{speaker}（已通过语音识别确认）"
         # 情绪感知：SenseVoice 本地识别的语音情绪 → AI 调整语气
