@@ -6,6 +6,7 @@ struct ChatMessage: Identifiable, Equatable {
     let role: Role
     let text: String
     var speaker: String? = nil
+    var timestamp: Date = Date()   // 消息时间（分钟级时间戳用）
 
     enum Role {
         case user, assistant

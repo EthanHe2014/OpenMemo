@@ -288,6 +288,12 @@ struct SessionListResponse: Codable {
 struct RawConversationMessage: Codable {
     let role: String
     let content: String
+    let createdAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case role, content
+        case createdAt = "created_at"
+    }
 }
 
 struct ConversationListResponse: Codable {

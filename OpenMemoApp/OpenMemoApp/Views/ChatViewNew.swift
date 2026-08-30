@@ -160,7 +160,12 @@ struct ChatViewNew: View {
                         welcomeView
                             .padding(.top, 40)
                     } else {
-                        ForEach(chatVM.messages) { msg in
+                        ForEach(Array(chatVM.messages.enumerated()), id: \.element.id) { index, msg in
+                            // 分钟级时间戳：每个新分钟只在最上面显示一次（居中）
+                            if shouldShowTimestamp(at: index) {
+                                timestampLabel(chatVM.messages[index].timestamp)
+                                    .transition(.opacity)
+                            }
                             MessageBubbleNew(message: msg)
                                 .id(msg.id)
                                 .transition(.asymmetric(
@@ -189,6 +194,28 @@ struct ChatViewNew: View {
         .scrollDismissesKeyboard(.interactively)
     }
     
+    /// 是否在该消息前显示分钟时间戳：第一条消息，或与上一条不在同一分钟
+    private func shouldShowTimestamp(at index: Int) -> Bool {
+        guard index > 0 else { return true }
+        let cal = Calendar.current
+        let prev = chatVM.messages[index - 1].timestamp
+        let cur = chatVM.messages[index].timestamp
+        return !cal.isDate(prev, equalTo: cur, toGranularity: .minute)
+    }
+
+    /// 居中的分钟时间戳（如 20:51）
+    private func timestampLabel(_ date: Date) -> some View {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "HH:mm"
+        return Text(fmt.string(from: date))
+            .font(OMFonts.caption2.weight(.medium))
+            .foregroundStyle(.white.opacity(0.45))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 3)
+            .background(Color.white.opacity(0.06), in: Capsule())
+            .frame(maxWidth: .infinity)
+    }
+
     private func scrollToBottom(scroll: ScrollViewProxy) {
         if let last = chatVM.messages.last {
             withAnimation(OMAnimations.smooth) {

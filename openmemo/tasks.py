@@ -610,6 +610,8 @@ class ConversationManager:
             msg = {"role": row["role"], "content": row["content"]}
             if row["intent"]:
                 msg["intent"] = row["intent"]
+            if row["created_at"]:
+                msg["created_at"] = row["created_at"]
             messages.append(msg)
         return messages
     
