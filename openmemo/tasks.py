@@ -686,11 +686,18 @@ class ConversationManager:
         conn2 = get_db()
         cursor2 = conn2.cursor()
         for row in rows:
-            custom = cursor2.execute("SELECT title FROM session_titles WHERE session_id = ?",
-                                     (row["session_id"],)).fetchone()
-            title = (custom["title"] if custom else (row["first_user_msg"] or "New chat"))[:40]
+            sid = row["session_id"]
+            if sid.startswith("speaker_"):
+                # 隐私：说话人专属会话只显示「X 的聊天」，绝不显示消息内容/自定义标题
+                name = sid[len("speaker_"):]
+                title = f"{name} 的聊天"
+            else:
+                # 匿名会话：不显示消息内容；有自定义标题才显示，否则「匿名聊天」
+                custom = cursor2.execute("SELECT title FROM session_titles WHERE session_id = ?",
+                                         (sid,)).fetchone()
+                title = (custom["title"] if custom else "匿名聊天")[:40]
             sessions.append({
-                "session_id": row["session_id"],
+                "session_id": sid,
                 "title": title,
                 "last_at": row["last_at"],
                 "msg_count": row["msg_count"],

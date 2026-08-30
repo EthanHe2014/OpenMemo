@@ -233,9 +233,24 @@ class TestConversationManagerDeep:
         assert sessions[0]["session_id"] == "s2"
 
     def test_list_sessions_title(self, cm):
+        # 隐私：侧边栏绝不显示消息内容
         cm.add_message("s1", "user", "我的第一个任务")
         sessions = cm.list_sessions()
-        assert "我的第一个任务" in sessions[0]["title"]
+        assert "我的第一个任务" not in sessions[0]["title"]
+        assert sessions[0]["title"] == "匿名聊天"
+
+    def test_list_sessions_speaker_title(self, cm):
+        # 说话人专属会话 → 「X 的聊天」，不显示内容
+        cm.add_message("speaker_Ethan", "user", "明天什么天儿啊")
+        sessions = cm.list_sessions()
+        assert sessions[0]["title"] == "Ethan 的聊天"
+
+    def test_list_sessions_custom_title(self, cm):
+        # 匿名会话：有自定义标题才显示
+        cm.add_message("s1", "user", "内容内容内容")
+        cm.rename_session("s1", "我的标签")
+        sessions = cm.list_sessions()
+        assert sessions[0]["title"] == "我的标签"
 
     def test_delete_session(self, cm):
         cm.add_message("s1", "user", "x")
