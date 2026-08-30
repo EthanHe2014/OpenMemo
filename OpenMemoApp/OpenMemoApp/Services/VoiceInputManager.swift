@@ -45,7 +45,7 @@ final class SpeakerAudioCaptureBox: @unchecked Sendable {
     /// 并记录结果到 Documents/speaker_recording.log —— 之前空文件就是这里静默失败。
     /// ⚠️ 开头的应答回声「我在！」（TTS 合成声，每次都一样）会污染说话人识别：
     /// 模型会锁死在这同一个合成声上 → 谁都被识别成同一个人。这里裁掉前 ~1.5 秒。
-    func exportToData() -> Data? {
+    func exportToData(skipSeconds: Double = 2.5) -> Data? {
         var result: Data?
         queue.sync {
             guard !self.buffers.isEmpty, let format else {
@@ -58,10 +58,9 @@ final class SpeakerAudioCaptureBox: @unchecked Sendable {
                 // ⚠️ 必须 .caf：SoundAnalysis 读 WAV 容器会静默返回空结果（实测）
                 guard let firstFormat = self.buffers.first?.format else { return }
                 let file = try AVAudioFile(forWriting: tmp, settings: firstFormat.settings)
-                // 裁掉开头应答回声：前 2.5 秒的帧全部跳过（与 stripAckUntil 一致，
-                // 覆盖「我在！」整个应答 + Edge TTS 生成延迟；残留的 TTS 尾巴会
-                // 污染说话人识别和情绪识别）
-                let skipFrames = AVAudioFrameCount(2.5 * firstFormat.sampleRate)
+                // 裁掉开头应答回声：默认 2.5 秒（覆盖「我在！」整个应答 + TTS 生成延迟）；
+                // 情绪识别传 skipSeconds 更小（保留更多音频，SenseVoice 需要 ≥3.5s）
+                let skipFrames = AVAudioFrameCount(skipSeconds * firstFormat.sampleRate)
                 var skipped: AVAudioFrameCount = 0
                 var written = 0
                 for buf in self.buffers {
@@ -181,7 +180,7 @@ final class VoiceInputManager {
     var liveText = ""             // 实时转写文本（输入框用）
 
     /// 回调
-    var onMessageReady: ((String, Data?) -> Void)?   // 留言结束（静音2秒）→ 提交（text + captured audio）
+    var onMessageReady: ((String, Data?, Data?) -> Void)?   // 留言结束（静音2秒）→ 提交（text + 识别音频 + 情绪音频）
 
     private let recognizer: SFSpeechRecognizer? =
         SFSpeechRecognizer(locale: Locale(identifier: "zh-CN"))
@@ -461,11 +460,15 @@ final class VoiceInputManager {
         if idle >= threshold {
             let finalText = liveText.trimmingCharacters(in: .whitespacesAndNewlines)
             // Capture audio data before stopping (stop clears speakerCapture)
+            // 识别用：裁 2.5s（去掉「我在！」应答回声，纯净人声）
             let audioData = speakerCapture?.exportToData()
+            // 情绪用：只裁 0.8s（SenseVoice 需要 ≥3.5s 音频才能判情绪；
+            // 保留更多音频，代价是开头可能带一点应答尾音）
+            let emotionAudio = speakerCapture?.exportToData(skipSeconds: 0.8)
             // 先彻底销毁会话，再回调提交（避免重复触发）
             stop()
             if !finalText.isEmpty {
-                onMessageReady?(finalText, audioData)
+                onMessageReady?(finalText, audioData, emotionAudio)
             }
         }
     }

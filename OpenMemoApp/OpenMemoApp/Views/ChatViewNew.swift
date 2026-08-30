@@ -73,8 +73,8 @@ struct ChatViewNew: View {
         }
         .task {
             await chatVM.startFresh()
-            voice.onMessageReady = { text, audioData in
-                chatVM.sendVoice(text: text, audioData: audioData)
+            voice.onMessageReady = { text, audioData, emotionAudio in
+                chatVM.sendVoice(text: text, audioData: audioData, emotionAudio: emotionAudio)
             }
             if !speechAuthGranted {
                 speechAuthGranted = await VoiceInputManager.requestAuthorization()

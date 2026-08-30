@@ -45,8 +45,8 @@ struct ChatView: View {
         .task {
             await chatVM.startFresh()
             // 语音留言完成 → 填入输入框并发送
-            voice.onMessageReady = { text, audioData in
-                chatVM.sendVoice(text: text, audioData: audioData)
+            voice.onMessageReady = { text, audioData, emotionAudio in
+                chatVM.sendVoice(text: text, audioData: audioData, emotionAudio: emotionAudio)
             }
             // 「小麦小麦」唤醒：始终自动开启（无需任何按钮）
             if !speechAuthGranted {

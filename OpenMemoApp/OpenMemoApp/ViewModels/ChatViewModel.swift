@@ -176,7 +176,7 @@ final class ChatViewModel {
 
     /// Send voice message with speaker identification.
     /// 模型就绪 + 有录音数据 → 自动识别说话人（无需手动选）。
-    func sendVoice(text: String, audioData: Data?) {
+    func sendVoice(text: String, audioData: Data?, emotionAudio: Data? = nil) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !isSending else { return }
         if isLockedChat { return }   // 别人的专属会话不能发消息
@@ -205,8 +205,8 @@ final class ChatViewModel {
                     unlockSpeaker(sp)
                 }
                 let userText = Self.prefixSpeaker(finalSpeaker, trimmed)
-                // 语音情绪（SenseVoice 本地识别）：并发跑，不阻塞发消息
-                let emotion = await OpenMemoAPI.shared.detectEmotion(wavData: data)
+                // 语音情绪（SenseVoice 本地识别）：用保留更多音频的版本（≥3.5s 才能判）
+                let emotion = await OpenMemoAPI.shared.detectEmotion(wavData: emotionAudio ?? data)
                 Self.logSI("emotion: \(emotion ?? "nil")")
                 await self.finishSend(userText: userText, sessionId: sessionId, speaker: finalSpeaker, emotion: emotion)
             }
