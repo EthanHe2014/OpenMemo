@@ -817,7 +817,7 @@
             const data = await res.json();
             const el = document.getElementById('server-status');
             el.textContent = '已连接'; el.style.color = 'var(--green)';
-            document.getElementById('server-version').textContent = 'v' + (data.version || '1.1.0');
+            document.getElementById('server-version').textContent = 'v' + (data.version || '1.2.0');
         } catch (e) {
             const el = document.getElementById('server-status');
             el.textContent = '离线'; el.style.color = 'var(--accent)';
