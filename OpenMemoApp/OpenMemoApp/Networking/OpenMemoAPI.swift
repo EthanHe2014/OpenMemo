@@ -169,7 +169,7 @@ final class OpenMemoAPI: @unchecked Sendable {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = jsonData
-        req.timeoutInterval = 30
+        req.timeoutInterval = 90   // 本地 R1 降级时 CPU 推理较慢，给足时间
         let (data, _) = try await URLSession.shared.data(for: req)
         let resp = try decoder.decode(ChatResponse.self, from: data)
         return ChatResult(reply: resp.reply, action: resp.action, speaker: resp.speaker)
