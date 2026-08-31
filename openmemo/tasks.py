@@ -705,6 +705,15 @@ class ConversationManager:
                 "msg_count": row["msg_count"],
             })
         conn2.close()
+        # 匿名会话只保留最新一个（侧边栏一个"匿名聊天"就够，避免一堆临时会话）
+        speaker_sessions = [s for s in sessions if s["session_id"].startswith("speaker_")]
+        anon_sessions = [s for s in sessions if not s["session_id"].startswith("speaker_")]
+        if anon_sessions:
+            latest_anon = max(anon_sessions, key=lambda s: s["last_at"] or "")
+            sessions = speaker_sessions + [latest_anon]
+        else:
+            sessions = speaker_sessions
+        sessions.sort(key=lambda s: s["last_at"] or "", reverse=True)
         return sessions
 
     def rename_session(self, session_id: str, title: str):

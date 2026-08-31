@@ -47,7 +47,7 @@ final class ChatViewModel {
         UserDefaults.standard.removeObject(forKey: "siUnlockedSpeaker")
         newSession()          // sets currentSessionId = "" and clears messages
         await refreshSessions()
-        currentTitle = "新对话"
+        currentTitle = "匿名聊天"
     }
 
     /// 新建聊天（+ 按钮用）：任何时候都能开新对话
@@ -60,7 +60,7 @@ final class ChatViewModel {
     func newSession() {
         currentSessionId = ""    // empty => app uses a transient id for this new chat
         messages = []
-        currentTitle = "新对话"
+        currentTitle = "匿名聊天"
         errorMessage = nil
     }
 
@@ -186,7 +186,7 @@ final class ChatViewModel {
             currentSessionId = "ios_" + UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "")
         }
         if messages.isEmpty {
-            currentTitle = String(trimmed.prefix(30))
+            currentTitle = "匿名聊天"   // 顶部标题不显示消息内容（隐私）
         }
 
         // 有录音 → 后台识别说话人，识别完再发（识别失败就用手动选择的说话人）
@@ -385,9 +385,9 @@ final class ChatViewModel {
         if currentSessionId.isEmpty {
             currentSessionId = "ios_" + UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "")
         }
-        // 从第一条用户消息生成标题（类似 DeepSeek）。
+        // 顶部标题永远用干净标签，不显示消息内容（隐私）
         if messages.isEmpty {
-            currentTitle = String(text.prefix(30))
+            currentTitle = "匿名聊天"
         }
 
         inputText = ""
