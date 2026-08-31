@@ -462,9 +462,9 @@ final class VoiceInputManager {
             // Capture audio data before stopping (stop clears speakerCapture)
             // 识别用：裁 2.5s（去掉「我在！」应答回声，纯净人声）
             let audioData = speakerCapture?.exportToData()
-            // 情绪用：只裁 0.8s（SenseVoice 需要 ≥3.5s 音频才能判情绪；
-            // 保留更多音频，代价是开头可能带一点应答尾音）
-            let emotionAudio = speakerCapture?.exportToData(skipSeconds: 0.8)
+            // 情绪用：裁 1.5s（SenseVoice 需要 ≥3.5s 音频才能判情绪；
+            // 录音一般 5-6s，裁 1.5s 后仍有 ≥3.5s 纯人声，且去掉更多 TTS 尾音）
+            let emotionAudio = speakerCapture?.exportToData(skipSeconds: 1.5)
             // 先彻底销毁会话，再回调提交（避免重复触发）
             stop()
             if !finalText.isEmpty {
