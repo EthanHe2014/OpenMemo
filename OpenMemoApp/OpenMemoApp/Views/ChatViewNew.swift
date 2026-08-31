@@ -162,8 +162,9 @@ struct ChatViewNew: View {
                     } else {
                         ForEach(Array(chatVM.messages.enumerated()), id: \.element.id) { index, msg in
                             // 分钟级时间戳：每个新分钟只在最上面显示一次（居中）
-                            if shouldShowTimestamp(at: index) {
-                                timestampLabel(chatVM.messages[index].timestamp)
+                            // ⚠️ 用快照里的 msg 本身，不要用 index 回查 live 数组（会越界崩溃）
+                            if shouldShowTimestamp(chatVM.messages, at: index) {
+                                timestampLabel(msg.timestamp)
                                     .transition(.opacity)
                             }
                             MessageBubbleNew(message: msg)
@@ -195,10 +196,12 @@ struct ChatViewNew: View {
     }
     
     /// 是否在该消息前显示时间戳：第一条消息，或与上一条不在同一个 5 分钟桶
-    private func shouldShowTimestamp(at index: Int) -> Bool {
-        guard index > 0 else { return true }
-        return fiveMinuteBucket(chatVM.messages[index - 1].timestamp)
-            != fiveMinuteBucket(chatVM.messages[index].timestamp)
+    /// 用传入的快照数组做边界检查，绝不越界访问 live 数组
+    private func shouldShowTimestamp(_ messages: [ChatMessage], at index: Int) -> Bool {
+        guard index > 0 else { return index == 0 }
+        guard index < messages.count else { return false }
+        return fiveMinuteBucket(messages[index - 1].timestamp)
+            != fiveMinuteBucket(messages[index].timestamp)
     }
 
     /// 5 分钟一个桶（20:51 → 20:50 桶）：同一桶内只显示一次
