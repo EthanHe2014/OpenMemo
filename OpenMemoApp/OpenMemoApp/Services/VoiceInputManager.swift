@@ -45,7 +45,7 @@ final class SpeakerAudioCaptureBox: @unchecked Sendable {
     /// 并记录结果到 Documents/speaker_recording.log —— 之前空文件就是这里静默失败。
     /// ⚠️ 开头的应答回声「我在！」（TTS 合成声，每次都一样）会污染说话人识别：
     /// 模型会锁死在这同一个合成声上 → 谁都被识别成同一个人。这里裁掉前 ~1.5 秒。
-    func exportToData(skipSeconds: Double = 2.5) -> Data? {
+    func exportToData(skipSeconds: Double = 1.5) -> Data? {
         var result: Data?
         queue.sync {
             guard !self.buffers.isEmpty, let format else {
@@ -58,8 +58,8 @@ final class SpeakerAudioCaptureBox: @unchecked Sendable {
                 // ⚠️ 必须 .caf：SoundAnalysis 读 WAV 容器会静默返回空结果（实测）
                 guard let firstFormat = self.buffers.first?.format else { return }
                 let file = try AVAudioFile(forWriting: tmp, settings: firstFormat.settings)
-                // 裁掉开头应答回声：默认 2.5 秒（覆盖「我在！」整个应答 + TTS 生成延迟）；
-                // 情绪识别传 skipSeconds 更小（保留更多音频，SenseVoice 需要 ≥3.5s）
+                // 裁掉开头应答回声：默认 1.5 秒。⚠️ 不能裁太多——短录音裁 2.5s 后
+                // 只剩 2-3s，SoundAnalysis 会返回空结果（SI 全挂）
                 let skipFrames = AVAudioFrameCount(skipSeconds * firstFormat.sampleRate)
                 var skipped: AVAudioFrameCount = 0
                 var written = 0
