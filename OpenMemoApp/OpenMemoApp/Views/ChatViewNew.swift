@@ -195,19 +195,17 @@ struct ChatViewNew: View {
         .scrollDismissesKeyboard(.interactively)
     }
     
-    /// 是否在该消息前显示时间戳：第一条消息，或与上一条不在同一个 5 分钟桶
-    /// 用传入的快照数组做边界检查，绝不越界访问 live 数组
+    /// 是否在该消息前显示时间戳：第一条消息、跨天、或与上一条间隔 ≥ 30 分钟。
+    /// 正常连续聊天完全不显示 —— 只在“需要重新建立时间感”时出现。
     private func shouldShowTimestamp(_ messages: [ChatMessage], at index: Int) -> Bool {
-        guard index > 0 else { return index == 0 }
         guard index < messages.count else { return false }
-        return fiveMinuteBucket(messages[index - 1].timestamp)
-            != fiveMinuteBucket(messages[index].timestamp)
-    }
-
-    /// 5 分钟一个桶（20:51 → 20:50 桶）：同一桶内只显示一次。
-    /// 用 epoch 秒 / 300，天然跨天 —— 新的一天第一个 5 分钟桶必然与昨天不同，强制出新时间戳
-    private func fiveMinuteBucket(_ date: Date) -> Int {
-        return Int(date.timeIntervalSince1970) / 300
+        if index == 0 { return true }
+        let cur = messages[index].timestamp
+        let prev = messages[index - 1].timestamp
+        // 跨天：必定显示（日期会变，用户需要知道是哪一天）
+        if !Calendar.current.isDate(cur, inSameDayAs: prev) { return true }
+        // 同一天但隔了很久（≥30 分钟）：显示一次时间锚点
+        return cur.timeIntervalSince(prev) >= 30 * 60
     }
 
     /// 居中的时间戳胶囊：今天只显示时间（20:51），跨天则带上日期（昨天 20:42 / 8/30 20:38）
