@@ -204,17 +204,23 @@ struct ChatViewNew: View {
             != fiveMinuteBucket(messages[index].timestamp)
     }
 
-    /// 5 分钟一个桶（20:51 → 20:50 桶）：同一桶内只显示一次
+    /// 5 分钟一个桶（20:51 → 20:50 桶）：同一桶内只显示一次。
+    /// 用 epoch 秒 / 300，天然跨天 —— 新的一天第一个 5 分钟桶必然与昨天不同，强制出新时间戳
     private func fiveMinuteBucket(_ date: Date) -> Int {
-        let cal = Calendar.current
-        let comps = cal.dateComponents([.hour, .minute], from: date)
-        return (comps.hour ?? 0) * 12 + ((comps.minute ?? 0) / 5)
+        return Int(date.timeIntervalSince1970) / 300
     }
 
-    /// 居中的时间戳（如 20:51）
+    /// 居中的时间戳胶囊：今天只显示时间（20:51），跨天则带上日期（昨天 20:42 / 8/30 20:38）
     private func timestampLabel(_ date: Date) -> some View {
         let fmt = DateFormatter()
-        fmt.dateFormat = "HH:mm"
+        let cal = Calendar.current
+        if cal.isDateInToday(date) {
+            fmt.dateFormat = "HH:mm"
+        } else if cal.isDateInYesterday(date) {
+            fmt.dateFormat = "'昨天' HH:mm"
+        } else {
+            fmt.dateFormat = "M/d HH:mm"
+        }
         return Text(fmt.string(from: date))
             .font(OMFonts.caption2.weight(.medium))
             .foregroundStyle(.white.opacity(0.45))
