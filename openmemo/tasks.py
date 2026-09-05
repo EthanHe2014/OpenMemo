@@ -92,6 +92,15 @@ def init_db():
         created_at TEXT DEFAULT (datetime('now', 'localtime'))
     )
     """)
+
+    # Migration: 消息情绪 / 声音事件 / 说话人 独立列（旧库补列）
+    for col in ("emotion", "event", "speaker"):
+        try:
+            cursor.execute(f"ALTER TABLE conversations ADD COLUMN {col} TEXT DEFAULT NULL")
+            conn.commit()
+            print(f"Migrated: added conversations.{col} column")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
     
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS pending_slots (
@@ -576,17 +585,19 @@ class ConversationManager:
         init_db()
     
     def add_message(self, session_id: str, role: str, content: str,
-                    intent: str = None, slots: dict = None, speaker: str = None):
-        """Add a message to conversation history (speaker 存进 slots，不换表结构)"""
+                    intent: str = None, slots: dict = None, speaker: str = None,
+                    emotion: str = None, event: str = None):
+        """Add a message to conversation history (speaker/emotion/event 存独立列；speaker 同时写 slots 兼容旧读取)"""
         if speaker:
             slots = dict(slots or {})
             slots["speaker"] = speaker
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute("""
-        INSERT INTO conversations (session_id, role, content, intent, slots)
-        VALUES (?, ?, ?, ?, ?)
-        """, (session_id, role, content, intent, json.dumps(slots) if slots else None))
+        INSERT INTO conversations (session_id, role, content, intent, slots, emotion, event, speaker)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (session_id, role, content, intent, json.dumps(slots) if slots else None,
+              emotion, event, speaker))
         conn.commit()
         conn.close()
     
@@ -612,6 +623,20 @@ class ConversationManager:
                 msg["intent"] = row["intent"]
             if row["created_at"]:
                 msg["created_at"] = row["created_at"]
+            # 说话人：优先独立列，旧数据回退 slots JSON
+            sp = row["speaker"] if "speaker" in row.keys() else None
+            if not sp and row["slots"]:
+                try:
+                    sp = json.loads(row["slots"]).get("speaker") or None
+                except Exception:
+                    sp = None
+            if sp:
+                msg["speaker"] = sp
+            # 情绪 / 声音事件（语音消息才带）
+            for key in ("emotion", "event"):
+                val = row[key] if key in row.keys() else None
+                if val:
+                    msg[key] = val
             messages.append(msg)
         return messages
     

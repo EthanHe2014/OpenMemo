@@ -294,9 +294,12 @@ struct RawConversationMessage: Codable {
     let role: String
     let content: String
     let createdAt: String?
+    let speaker: String?
+    let emotion: String?
+    let event: String?
 
     enum CodingKeys: String, CodingKey {
-        case role, content
+        case role, content, speaker, emotion, event
         case createdAt = "created_at"
     }
 }

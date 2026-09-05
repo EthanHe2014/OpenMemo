@@ -512,7 +512,8 @@ async def process_message(session_id: str, user_message: str,
     3. Reply with the AI's words VERBATIM.
     4. If the AI created a task / scheduled an appointment, do it.
     """
-    conv_manager.add_message(session_id, "user", user_message, speaker=speaker)
+    conv_manager.add_message(session_id, "user", user_message, speaker=speaker,
+                             emotion=emotion, event=event)
 
     context = conv_manager.get_context_for_ai(session_id)
     result = await analyze_intent(user_message, context, speaker=speaker, emotion=emotion, event=event)

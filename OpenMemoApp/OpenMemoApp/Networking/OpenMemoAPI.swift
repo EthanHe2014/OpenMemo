@@ -144,10 +144,11 @@ final class OpenMemoAPI: @unchecked Sendable {
         comps.queryItems = [URLQueryItem(name: "limit", value: "100")]
         let (data, _) = try await URLSession.shared.data(from: comps.url!)
         let resp = try decoder.decode(ConversationListResponse.self, from: data)
-        // 把服务端原始消息转换为 App 消息，映射角色 + 时间戳。
+        // 把服务端原始消息转换为 App 消息，映射角色 + 时间戳 + 说话人 + 情绪 + 声音事件。
         return resp.messages.map { raw in
             let role: ChatMessage.Role = (raw.role == "user") ? .user : .assistant
-            var msg = ChatMessage(role: role, text: raw.content)
+            var msg = ChatMessage(role: role, text: raw.content,
+                                  speaker: raw.speaker, emotion: raw.emotion, event: raw.event)
             if let cs = raw.createdAt {
                 let fmt = DateFormatter()
                 fmt.dateFormat = "yyyy-MM-dd HH:mm:ss"

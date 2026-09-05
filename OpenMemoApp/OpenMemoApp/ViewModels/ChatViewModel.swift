@@ -314,15 +314,22 @@ final class ChatViewModel {
     private func loadSpeakerHistory(_ spSession: String) async {
         do {
             let history = try await api.getConversations(sessionId: spSession)
-            messages = history.map { msg in
-                if msg.role == .user, let parsed = Self.extractSpeaker(from: msg.text) {
-                    return ChatMessage(role: .user, text: parsed.clean, speaker: parsed.name)
-                }
-                return msg
-            }
+            messages = history.map { Self.displayMessage($0) }
         } catch {
             messages = []
         }
+    }
+
+    /// 把服务端消息整理成显示用消息：正文去掉 "[名字] " 前缀。
+    /// speaker 优先用服务端字段（新数据），旧数据（无字段）才从前缀解析；
+    /// emotion / event / timestamp 原样保留，绝不在整理时弄丢。
+    static func displayMessage(_ msg: ChatMessage) -> ChatMessage {
+        guard msg.role == .user, let parsed = extractSpeaker(from: msg.text) else { return msg }
+        var clean = ChatMessage(role: .user, text: parsed.clean,
+                                speaker: msg.speaker ?? parsed.name,
+                                emotion: msg.emotion, event: msg.event)
+        clean.timestamp = msg.timestamp
+        return clean
     }
 
     /// 从 "[名字] 正文" 解析出 (名字, 正文)；没有前缀则原样返回
@@ -344,13 +351,8 @@ final class ChatViewModel {
         defer { isLoading = false }
         do {
             let history = try await api.getConversations(sessionId: sessionId)
-            // 服务端消息可能带 "[名字] " 前缀 → 解析成 speaker 字段，正文保持干净
-            messages = history.map { msg in
-                if msg.role == .user, let parsed = Self.extractSpeaker(from: msg.text) {
-                    return ChatMessage(role: .user, text: parsed.clean, speaker: parsed.name)
-                }
-                return msg
-            }
+            // 服务端消息可能带 "[名字] " 前缀 → 显示时去掉，speaker/emotion/event 保留
+            messages = history.map { Self.displayMessage($0) }
         } catch {
             errorMessage = "无法加载对话：\(error.localizedDescription)"
         }
