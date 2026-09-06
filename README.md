@@ -2,7 +2,7 @@
 
 AI 驱动的个人语音助手 —— 会对话、会记任务、会在你需要的时候主动提醒你。
 
-OpenMemo 的核心是一个**可配置的大模型对话 AI**：任何 OpenAI 兼容的接口都能接（BaseURL + API Key + 模型名都由你在设置向导里填）。它的特别之处在于：**AI 负责所有"思考"和"说话"**，服务端只有一个轻量程序，负责把 AI 的结构化输出解析出来、存任务、按时间把 AI 写的提醒念出来。
+OpenMemo 的核心是一个**可配置的大模型对话 AI**：任何 OpenAI 兼容的接口都能接（BaseURL + API Key + 模型名都在设置向导里填）。它的特别之处在于：**AI 负责所有"思考"和"说话"**，服务端只有一个轻量程序，负责把 AI 的结构化输出解析出来、存任务、按时间把 AI 写的提醒念出来。
 
 > 📱 **使用方式**：本项目通过 **iOS App** 使用（Web 仪表盘 `/` 辅助查看）。无飞书 / 钉钉 / 企业微信 等 IM 通道——纯自家 App。
 
@@ -10,14 +10,17 @@ OpenMemo 的核心是一个**可配置的大模型对话 AI**：任何 OpenAI �
 
 ## 一、它能做什么
 
-- 🗣️ **说话人识别（SI）**：识别是谁在说话，消息自动标注说话人；AI 知道对话对象，**每个人的聊天记录互相隔离**，隐私不串台。
 - 🗣️ **自然对话**：像真人一样聊天、追问、确认，由 AI 自主决定问什么、怎么问。
+- 🎙️ **说话人识别（SI）**：App 内登记 + 就地训练，自动认出谁在说话；消息进入各人专属会话，**聊天记录与任务人人隔离**，隐私不串台。
+- 😊 **情绪识别 + 声音事件（v1.2）**：本地离线识别说话情绪（高兴/悲伤/生气/恐惧/惊讶/中性），还能听出笑声、哭声、咳嗽、掌声；AI 会照顾你的心情、接梗、安慰，甚至点破"反话"。气泡上带彩色情绪标签。
 - 📝 **记任务**：你说"明天开会"，它自动记下；你说"每天提醒我写作业"，它建立每日循环提醒。
 - ✈️ **出行提醒**：你说"明天13:00赶飞机"，它会主动问你到机场要多久、国内还是国际，然后**反推出出发提醒时间**（提前留出堵车/值机/安检缓冲），到点念给你听。
 - 📰 **每日新闻**：你说"每天给我看新闻"，它每天到点搜索当天新鲜新闻播给你。
 - 📅 **带日程的重复任务**：暑假作业按天分配，每天提醒当天具体内容。
 - 🔈 **语音播报**：Mac mini 扬声器用中文读出提醒（Edge TTS）。
-- 📱 **iOS App + 本地通知**：手机上看任务、对话、管理会话（侧边栏）；提醒时间到了手机也会弹本地通知（即使不在 Mac 旁）。> ⚠️ 尚未上架 App Store，需 Mac + Xcode 源码构建（见 [iOS 使用指南](docs/setup-ios-xcode.md)）。
+- 📱 **iOS App + 本地通知**：手机上看任务、对话、管理会话（侧边栏）；提醒时间到了手机也会弹本地通知（即使不在 Mac 旁）。
+- 🛡️ **本地降级**：云端 AI 连不上时自动降级到本地模型（DeepSeek-R1），不会"服务不可用"。
+- ⚠️ 尚未上架 App Store，需 Mac + Xcode 源码构建（见 [iOS 使用指南](docs/setup-ios-xcode.md)）。
 
 ### 智能任务类型
 
@@ -44,7 +47,7 @@ cd OpenMemo
 
 1. **检查 Python 3.10+**（没有会提示你安装）
 2. **创建虚拟环境** `.venv`（仅首次）
-3. **安装全部依赖**（仅首次）
+3. **安装全部依赖**（仅首次；含本地情绪/STT 模型所需的 sherpa-onnx 等）
 4. **进入交互式设置向导**（首次或配置不完整时自动出现）——它会`一步一步`带你：
    - **选择 AI 提供商**：OpenAI / DeepSeek / 智谱 / Moonshot / Ollama（本地）/ 自定义，接口地址自动预填、可修改
    - **填入 AI 接口密钥 + 模型名** —— 密钥输入时不回显，不怕被偷看
@@ -55,6 +58,8 @@ cd OpenMemo
 看到 `Application startup complete` + `[调度器] 已启动` 即成功。**服务会打印一份「接下来这样用」的指引**——浏览器打开 `http://localhost:18890/` 的仪表盘就能立刻对话测试。
 
 **以后每次启动**：直接 `./start.sh` 即可，配置已保存，环境秒起，不再重复安装、不再重复询问。
+
+> 💡 想在后台常驻：`nohup ./start.sh > openmemo.log 2>&1 &`；或配好 `.env` 后直接 `.venv/bin/python -u -m openmemo.server`（见第六节）。
 
 ---
 
@@ -83,16 +88,16 @@ OpenMemo 的对话大脑可以是**任何 OpenAI 兼容的模型服务**，不�
 
 ## 四、架构
 
-**AI 自主架构**（2026-08 新版）：
+**AI 自主架构**（AI 做全部对话决策，服务端只做执行）：
 
 ```
 iOS App
-   │  发送消息（/api/chat）
+   │  发送消息（/api/chat，可带 speaker / emotion / event）
    ▼
 OpenMemo 服务端（FastAPI）
    │  【唯一行为逻辑：把消息交给 AI，解析 AI 返回的 JSON】
-   │  1. 把"用户消息 + 历史 + 当前时间"发给你的 AI 接口
-   │  2. AI 返回 { action, task{time, reminder_text, ...}, appointment{at, read_aloud}, reply }
+   │  1. 把"用户消息 + 说话人 + 情绪 + 历史 + 当前时间"发给你的 AI 接口
+   │  2. AI 返回 { action, task{content, time, reminder_text, ...}, appointment{at, read_aloud}, reply }
    │  3. 服务端 ①原样回复 AI 的话 ②把任务/提醒存进 SQLite 并按时间调度
    │  4. 到点 → 把 AI 写的 reminder_text 用 Edge TTS 生成语音 → Mac 扬声器播报
    ▼
@@ -101,6 +106,8 @@ iOS App（任务列表 / 提醒状态 / 本地通知） / Mac 扬声器
 
 - **AI 全权负责对话**：问什么、怎么问、是否放弃追问、写什么样的话，全部由 AI 自己决定。
 - **服务端不做任何"话术/模板/槽位填充"**：它只负责解析 AI 的 JSON、存任务、按时播报。
+- **改 AI 人设/行为**：去改 `openmemo/prompts.py` 里的 SYSTEM_PROMPT（而不是往代码里加写死的对话逻辑）。
+- **本地能力**：情绪识别（SenseVoice via sherpa-onnx，离线）、中文 STT（离线）、说话人识别（App 内 Create ML）。
 - **模型完全可配置**：通过设置向导填入 BaseURL / API Key / 模型名，任意 OpenAI 兼容接口都能用。
 
 ### 技术栈
@@ -109,6 +116,8 @@ iOS App（任务列表 / 提醒状态 / 本地通知） / Mac 扬声器
 |------|------|
 | 服务端 | Python 3.10+ + FastAPI |
 | AI | 任意 OpenAI 兼容接口（可配置，无默认） |
+| 情绪/语音事件 | sherpa-onnx + SenseVoice（完全本地离线） |
+| 本地中文 STT | sherpa-onnx 流式 Zipformer（离线兜底） |
 | 实时新闻 | 可配置的新闻搜索 API（向导中自选提供商，可选） |
 | TTS（文字转语音） | Edge TTS（zh-CN-XiaoxiaoNeural） |
 | 存储 | SQLite |
@@ -129,31 +138,38 @@ OpenMemo/
 ├── setup.py              # 交互式设置向导（配 AI / 搜索 / 偏好）
 ├── .env.example          # 配置模板（空值；真实配置由 setup.py 生成 .env）
 ├── openmemo/
-│   ├── __init__.py
+│   ├── __init__.py / __main__.py
 │   ├── server.py         # FastAPI 服务 + 全部 REST API
-│   ├── ai.py             # AI 接口接入 + SYSTEM_PROMPT（AI 的"人设"）
-│   ├── conversation.py   # 核心：把消息交给 AI，解析 JSON，原样回复
+│   ├── ai.py             # AI 接口接入（云端 + 本地降级）
+│   ├── prompts.py        # SYSTEM_PROMPT —— AI 的人设与行为规则（改这里！）
+│   ├── conversation.py   # 把消息交给 AI → 解析 JSON → 原样回复（保持轻量）
+│   ├── emotion.py        # SenseVoice 本地情绪 / 声音事件识别
+│   ├── stt.py            # sherpa-onnx 本地离线中文语音转文字
 │   ├── scheduler.py      # APScheduler 提醒调度 + 按任务类型执行
-│   ├── tasks.py          # 任务/会话 的 SQLite 存取
+│   ├── tasks.py          # 任务 / 会话 / 提醒 / 告警 的 SQLite 存取
 │   ├── voice.py          # Edge TTS 生成语音 + Mac 扬声器播放
-│   └── config.py         # 配置读取（.env，纯环境变量，无硬编码密钥）
-├── data/                 # SQLite 数据库 + 音频缓存（自动创建）
+│   ├── watchdog.py       # 看护（服务异常自动恢复 / 告警）
+│   ├── monitor.py        # 系统看护辅助
+│   ├── config.py         # 配置读取（.env，纯环境变量，无硬编码密钥）
+│   ├── cli.py            # 命令行入口辅助
+│   └── dashboard.html    # Web 仪表盘（辅助查看/测试对话）
+├── data/                 # SQLite 数据库 + 音频缓存（自动创建，gitignore）
 ├── OpenMemoApp/          # iOS + Mac 客户端（SwiftUI，同仓库）
 │   ├── OpenMemoApp.xcodeproj
 │   └── OpenMemoApp/
-│   ├── VoiceInputManager.swift  # 语音输入（唤醒词 + 留言，Apple 原生）
-│   ├── SpeakerRecognizer.swift  # 说话人识别：录音样本 + Create ML 训练 + SoundAnalysis 识别
-│   └── LocalNotificationManager.swift  # 本地通知
-├── Views/        # 聊天 / 任务 / 设置 / 说话人登记向导（SpeakerEnrollmentView）
-├── ViewModels/   # 任务轮询 + 聊天（含说话人专属会话路由）
-├── Networking/   # REST API 客户端
-├── Models/       # 数据结构（含 ChatRequest.speaker）
-├── Design/       # 设计系统（暗色极光 + 玻璃拟态）
-├── tests/
-│   └── test_tasks.py
+│       ├── Views/        # 聊天 / 任务 / 设置 / 说话人登记向导（SpeakerEnrollmentView）
+│       ├── ViewModels/   # ChatViewModel（说话人专属会话路由）+ TaskListViewModel
+│       ├── Networking/   # OpenMemoAPI（REST 客户端，含情绪/事件字段）
+│       ├── Models/       # 数据结构
+│       ├── Services/     # SpeakerRecognizer / VoiceInputManager / 本地通知
+│       └── Design/       # 设计系统（暗色极光 + 玻璃拟态）
+├── models/               # 本地模型（sherpa-onnx 流式中文 STT 等，已入库）
+├── scripts/              # 辅助脚本（看护测试等）
+├── tests/                # pytest（服务端单元/集成测试）
 └── docs/
     ├── mvp-flow.md            # MVP 流程说明
     ├── setup-ios-xcode.md     # iOS App（Xcode）使用指南
+    ├── android-stt-plan.md    # 安卓/浏览器 STT 方案
     └── SMART-AI-CHANGES.md    # AI 架构变更记录（内部开发）
 ```
 
@@ -163,9 +179,9 @@ OpenMemo/
 
 ---
 
-## 六、部署到服务器（可选）
+## 六、部署到服务器 / 后台常驻（可选）
 
-`start.sh` 默认在本机前台运行（Ctrl+C 停止）。要长期在服务器/后台跑：
+`start.sh` 默认在本机前台运行（Ctrl+C 停止）。要长期在后台跑：
 
 ```bash
 # 方式一：nohup 后台运行
@@ -185,10 +201,12 @@ nohup ./start.sh > openmemo.log 2>&1 &
    ```bash
    cloudflared tunnel --url http://localhost:18890
    ```
-2. 打开 `OpenMemoApp/`（本仓库子目录），在 App 的**设置页**里把服务器地址改成你的服务地址（隧道 URL 或局域网 IP；模拟器可用 `http://127.0.0.1:18890`）。
+2. 打开 `OpenMemoApp/`（本仓库子目录），在 App 的**设置页**里把服务器地址改成你的服务地址（隧道 URL 或局域网 IP；模拟器可用 `http://127.0.0.1:18890`）。**iPhone 真机必须填 Mac 的局域网 IP，不能填 127.0.0.1。**
 3. 用 Xcode 构建运行到模拟器或真机（详见 [iOS 使用指南](docs/setup-ios-xcode.md)）。
 
 ⚠️ 快速隧道重启后 URL 会变，需要同步更新 App 的 `baseURL`。
+
+> ⚠️ **项目位于 ~/Desktop 下时不要用 launchd 自启**：macOS TCC 权限会拦截 launchd 读取桌面目录，Python 会卡死且无弹窗可点。想开机自启请先把项目移出桌面（如 `~/Projects/OpenMemo`），或给 launchd 完全磁盘访问权限（需 GUI 手动授权）。普通终端/nohup 启动不受影响。
 
 ---
 
@@ -261,6 +279,15 @@ iOS App 就是你与 OpenMemo 对话的入口。
    - 服务端同时把说话人身份告诉 AI：本人能看到自己的任务/提醒；未识别的人视为访客，AI 不会透露任何已登记用户的信息，并会建议访客去训练语音，或匿名对话
 4. **提高准确率**：每人样本越多、说话人之间差异越大越准；识别混了就在 App 里重录重训。
 
+### 😊 情绪与声音事件（v1.2）
+
+对 App 说话时，系统会自动判断你的**情绪**（高兴/悲伤/生气/恐惧/惊讶/中性）和**声音事件**（笑声/哭声/咳嗽/掌声），并告诉 AI。效果举例：
+
+- 你说"今天考了满分！"（开心）→ AI 陪你开心
+- 你说"今天考了满分！"（声音却是难过的）→ AI 会点破："这话听着怎么像反话？"
+- 你说话中间咳嗽 → AI 会关心你"是不是感冒了"
+- 情绪标签会显示在聊天气泡上；**情绪/说话人/声音事件都会存入历史**，翻旧记录仍然可见
+
 ### ✅ 查看 / 完成 / 删除任务
 
 ```
@@ -284,16 +311,21 @@ iOS App 就是你与 OpenMemo 对话的入口。
 |------|------|------|
 | GET | `/` | Web 仪表盘（辅助查看） |
 | GET | `/api/health` | 健康检查 |
-| GET | `/api/tasks` | 任务列表 |
+| GET | `/api/tasks` | 任务列表（可按 owner 过滤） |
 | GET | `/api/tasks/{id}` | 获取单个任务 |
 | POST | `/api/tasks` | 创建任务 |
 | PATCH | `/api/tasks/{id}` | 更新任务 |
 | DELETE | `/api/tasks/{id}` | 删除任务 |
-| POST | `/api/chat` | 与 AI 对话（核心） |
+| POST | `/api/chat` | 与 AI 对话（核心；可带 speaker/emotion/event） |
+| POST | `/api/emotion` | 本地情绪 + 声音事件识别（WAV→{text,emotion,event}） |
+| POST | `/api/stt` | 本地离线中文语音转文字（WAV→文本） |
 | POST | `/api/speak` | 播报一段文字 |
-| GET | `/api/conversations/{session_id}` | 获取会话历史 |
+| GET | `/api/conversations/{session_id}` | 会话历史（含 speaker/emotion/event） |
 | GET | `/api/sessions` | 会话列表（侧边栏） |
+| PATCH | `/api/sessions/{session_id}` | 重命名会话 |
 | DELETE | `/api/sessions/{session_id}` | 删除会话 |
+| GET | `/api/alerts` | 看护告警（轮询） |
+| GET | `/api/reminders` | 提醒送达记录（AI 提醒原文） |
 
 ---
 
@@ -311,10 +343,11 @@ iOS App 就是你与 OpenMemo 对话的入口。
 | is_recurring | 循环模式（每天/每周一 等） |
 | reminder_sent | 是否已发送提醒 |
 | meta_data | JSON，含 AI 写的 `reminder_text` 等 |
+| owner | 说话人归属（谁的任务谁能看） |
 
 ### 会话相关
-- **conversations**：每条消息（role / content / intent）
-- **sessions**：会话列表（标题 = 第一条用户消息）
+- **conversations**：每条消息（role / content / intent / **speaker / emotion / event**）
+- **sessions**：会话列表（`speaker_<名字>` 专属会话或匿名会话，标题永远干净、不含消息内容）
 
 ---
 
@@ -327,10 +360,11 @@ OpenMemo 需要至少一个可用的 AI 接口（BaseURL + Key + 模型）才能
 服务端内置了"承诺就必须落地"规则：AI 一旦向你确认提醒时间，同一轮就必须返回创建任务的动作，服务端才会真正调度。若仍遇到"说了但不建"：
 1. 检查服务日志是否有 `[调度器] 已安排任务 X`；
 2. 确认你配置的模型**输出稳定的 JSON**（设置向导里填的模型名是否正确）；
-3. 确认模型服务**支持流式响应**。
+3. 确认模型服务**支持流式响应**；
+4. 仍不行就试试给 `openmemo/prompts.py` 的 SYSTEM_PROMPT 加更明确的指示（AI 行为问题优先改提示词，别加写死的代码）。
 
 **Q：App 连不上？**
-基本是隧道 URL 变了。把 `OpenMemoAPI.swift` 的 `baseURL` 更新成最新隧道地址（局域网或模拟器直连请用对应 IP）。
+基本是隧道 URL 变了。把 App 设置页里的服务器地址更新成最新隧道地址；局域网/模拟器直连请用对应 IP（**iPhone 真机不能用 127.0.0.1**）。
 
 **Q：Mac 没声音？**
 检查系统输出设备是不是 Mac 自带扬声器（ToDesk 等远程工具会挂虚拟声卡抢占输出）。
@@ -342,3 +376,4 @@ OpenMemo 需要至少一个可用的 AI 接口（BaseURL + Key + 模型）才能
 - 需要你配置一个**支持流式的 OpenAI 兼容 AI 接口**（本项目不内置、不默认任何模型/密钥）。
 - 语音播报依赖本机 `edge-tts` + `afplay`，需要能访问 Edge TTS 服务。
 - 每日新闻可选外部搜索 API（在设置向导里选择提供商并填入密钥；不配置则新闻由 AI 生成）。
+- 情绪/STT 为本地 sherpa-onnx 模型（`models/` 目录，已入库；首次使用按需自动加载）。

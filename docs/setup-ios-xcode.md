@@ -13,10 +13,14 @@
 
 ## 2. 获取代码
 
+iOS App 就在 OpenMemo 主仓库的 `OpenMemoApp/` 子目录里：
+
 ```bash
-git clone https://github.com/EthanHe2014/OpenMemoApp.git
-cd OpenMemoApp
+git clone https://github.com/EthanHe2014/OpenMemo.git
+cd OpenMemo/OpenMemoApp
 ```
+
+（`OpenMemoApp.xcodeproj` 已随仓库提交，直接用 Xcode 打开即可；如需重新生成工程文件，用 `xcodegen`：`brew install xcodegen && xcodegen generate`，配置见 `project.yml`。）
 
 ## 3. 配置服务器地址（关键）
 
