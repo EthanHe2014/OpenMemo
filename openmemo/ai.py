@@ -162,6 +162,8 @@ async def call_ai(messages: list, system_prompt: str = None, retries: int = 1,
             await asyncio.sleep(1)
     
     # 主服务连接失败/异常 → 降级本地模型（保证用户永远有回复）
+    if last_error:
+        print(f"[ai] 主服务失败原因: {last_error}")
     return await _try_fallback(full_messages, temperature, max_tokens)
 
 
@@ -175,7 +177,7 @@ async def _try_fallback(messages: list, temperature: float = None, max_tokens: i
         return {"content": None, "error": "Empty response"}
     print(f"[ai] 主服务失败，降级到本地模型 {fb_model}")
     try:
-        async with httpx.AsyncClient(timeout=180.0) as client:
+        async with httpx.AsyncClient(timeout=240.0) as client:
             r = await client.post(
                 f"{fb_url.rstrip('/')}/chat/completions",
                 json={
